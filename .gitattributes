@@ -1,0 +1,4 @@
+# Scripts and the Skill are read by tools that want LF, on any system.
+*.sh text eol=lf
+skills/**/SKILL.md text eol=lf
+.goreleaser.yaml text eol=lf

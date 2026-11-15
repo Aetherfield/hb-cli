@@ -611,7 +611,7 @@ func TestTheSkillNamesOnlyRealTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(b)
+	text := strings.ReplaceAll(string(b), "\r\n", "\n") // a Windows checkout may have made it CRLF
 	if !strings.HasPrefix(text, "---\nname: hb-red-packet\ndescription: ") {
 		t.Fatalf("frontmatter: %.80q", text)
 	}
