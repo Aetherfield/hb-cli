@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+project_name: hb
+
+# The version hb reports is <VERSION>+<build date>.<commit count>.g<short sha>
+# (README, scripts/install.*); the workflow puts it in HB_VERSION. The archives
+# are named by the tag's version alone, because a "+" does not belong in a file name.
+
+builds:
+  - id: hb
+    main: ./cmd/hb
+    binary: hb
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X hb/internal/cmd.Version={{ .Env.HB_VERSION }}
+
+archives:
+  - id: hb
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "hb_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - docs/THIRD_PARTY.md
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ .Version }}-snapshot"
+
+changelog:
+  disable: true
+
+# A release is made as a draft: look at it, then publish it by hand.
+release:
+  draft: true
+  prerelease: auto

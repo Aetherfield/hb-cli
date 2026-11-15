@@ -34,7 +34,10 @@ cd hb-cli
 比如 `0.1.0+20261115.2.g984f163`；大版本号写在仓库根目录的 `VERSION` 文件里，日期是 UTC。
 直接 `go build` 的版本显示为 `dev+g<sha>`（工作区有改动时加 `.dirty`）。
 
-平台：Windows 是主要的开发环境；macOS 和 Linux 能交叉编译、`go vet` 通过，但 macOS 没有在真机上跑过。
+不想装 Go：在仓库的 Releases 页面下载对应系统的压缩包（Windows 和 macOS、Linux 的 amd64 和 arm64 都有，
+Windows 是 `.zip`，其余是 `.tar.gz`），用 `checksums.txt` 核对，把里面的 `hb` 放进 `PATH`。
+
+平台：Windows 是主要的开发环境；macOS 和 Linux 在 CI 里跑 `go vet` 和 `go test`，没有人在 macOS 真机上用过。
 
 ## 开始用
 
@@ -146,6 +149,17 @@ go test ./...
 
 - [`docs/api-notes.md`](docs/api-notes.md)：各站接口的整理，标明哪些来自源码、哪些来自抓包、哪些还没验证。
 - [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md)：用到的别人的协议和文件，以及 Minecraft 素材为什么不随 hb 分发。
+
+### 发版
+
+改仓库根目录的 `VERSION`（`<major>.<minor>.<patch>`）并提交，然后打同名标签：
+
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+`release` 工作流会核对标签和 `VERSION` 一致，跑 `go vet`、`go test`，用 goreleaser 编出六个平台的压缩包，附到一个**草稿**
+Release 上；看过之后手动发布。`hb --version` 显示的是 `<VERSION>+<构建日期>.<提交数>.g<短 sha>`，压缩包文件名只用标签的版本号。
 
 ## 许可
 

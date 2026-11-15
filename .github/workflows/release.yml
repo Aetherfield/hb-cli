@@ -1,0 +1,38 @@
+name: release
+
+# Push a tag v<VERSION> (VERSION is the file at the root) to build the archives
+# for Windows, macOS and Linux and attach them to a draft release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the commit count is part of the version
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: the tag is the version
+        run: |
+          base=$(tr -d ' \r\n' < VERSION)
+          if [ "${GITHUB_REF_NAME}" != "v${base}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match VERSION v${base}" >&2
+            exit 1
+          fi
+          echo "HB_VERSION=${base}+$(date -u +%Y%m%d).$(git rev-list --count HEAD).g$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+      - run: go vet ./...
+      - run: go test ./...
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
