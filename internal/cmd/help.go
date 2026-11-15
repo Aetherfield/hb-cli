@@ -91,6 +91,7 @@ var shorts = map[string]string{
 	"hb play":            "玩一个 lafish 红包（矿洞夺宝进终端游戏）",
 	"hb login":           "登录某个站点并保存会话",
 	"hb unsnow":          "Unsnow 红包（官方只读接口）",
+	"hb mcp":             "给 AI 助手用的 MCP 服务",
 	"hb unsnow check":    "查一个红包现在能不能领（不会领取）",
 	"hb unsnow plaza":    "看公开红包广场",
 	"hb unsnow me":       "令牌属于谁，口令查错次数和验证状态",
@@ -105,12 +106,13 @@ var groups = []struct{ id, title string }{
 	{"account", "账号"},
 	{"lafish", "lafish（hb.lafi.sh）"},
 	{"unsnow", "Unsnow（hb.unsnow.org）"},
+	{"ai", "AI 助手"},
 }
 
 var groupOf = map[string]string{
 	"login": "account", "logout": "account", "whoami": "account",
 	"play": "lafish", "kddb": "lafish", "assets": "lafish", "hints": "lafish",
-	"unsnow": "unsnow",
+	"unsnow": "unsnow", "mcp": "ai",
 }
 
 // polish gives the whole tree its help screens: the template, the groups, one

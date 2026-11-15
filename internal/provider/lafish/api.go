@@ -186,6 +186,17 @@ func (l *Lafish) ClaimCode(ctx context.Context, s auth.Session, id, input, human
 	return l.do(ctx, s, http.MethodPost, "/activities/"+id+"/claim", body)
 }
 
+// ClaimDirect takes the share of a packet that is claimed with one click
+// (participationMode "direct"): no passcode, no input, so there is nothing to
+// guess. One request, never retried. A packet that wants a human check answers
+// HUMAN_CHECK_REQUIRED and hb stops there (hb never solves one).
+func (l *Lafish) ClaimDirect(ctx context.Context, s auth.Session, id string) (json.RawMessage, error) {
+	return l.do(ctx, s, http.MethodPost, "/activities/"+id+"/claim", map[string]any{
+		"submissionId":      newUUID(),
+		"participationMode": "direct",
+	})
+}
+
 // PageIdentity asks lafish to sign a token naming the viewer for this
 // packet's page (docs: page-identity-design). nonce is optional.
 func (l *Lafish) PageIdentity(ctx context.Context, s auth.Session, id, nonce string) (json.RawMessage, error) {

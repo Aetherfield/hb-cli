@@ -32,7 +32,7 @@ func NewRoot() *cobra.Command {
 	}
 	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "output JSON (keys always English, no secrets)")
 	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "profile name (default: config default_profile)")
-	root.AddCommand(newLoginCmd(), newLogoutCmd(), newWhoamiCmd(), newPlayCmd(), newKddbCmd(), newAssetsCmd(), newHintsCmd(), newUnsnowCmd(), newDoctorCmd())
+	root.AddCommand(newLoginCmd(), newLogoutCmd(), newWhoamiCmd(), newPlayCmd(), newKddbCmd(), newAssetsCmd(), newHintsCmd(), newUnsnowCmd(), newMCPCmd(), newDoctorCmd())
 	polish(root)
 	return root
 }

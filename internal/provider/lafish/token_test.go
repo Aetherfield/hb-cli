@@ -2,6 +2,7 @@ package lafish
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -172,5 +173,32 @@ func TestATokenOverTheLimitIsToldHowLongToWaitAndNotRetried(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("%d requests: a 429 is never retried", n)
+	}
+}
+
+func TestClaimDirectSendsDirectModeAndNothingToGuess(t *testing.T) {
+	var body map[string]any
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Write([]byte(`{"result":"claimed","claim":{"amount":"1.50"}}`))
+	}))
+	defer srv.Close()
+	l := &Lafish{API: srv.URL + "/api", HTTP: httpx.New()}
+	raw, err := l.ClaimDirect(context.Background(), tokenSess(), "act1")
+	if err != nil || !strings.Contains(string(raw), `"claimed"`) {
+		t.Fatalf("%s %v", raw, err)
+	}
+	if path != "/api/activities/act1/claim" || body["participationMode"] != "direct" {
+		t.Fatalf("%s %v", path, body)
+	}
+	for _, k := range []string{"password", "input", "humanToken", "discoveryId"} {
+		if _, has := body[k]; has {
+			t.Errorf("a direct claim carries no %s", k)
+		}
+	}
+	if id, _ := body["submissionId"].(string); len(id) != 36 {
+		t.Errorf("submissionId %q", id)
 	}
 }

@@ -120,6 +120,39 @@ fi
 
 其他 shell：`hb completion bash|zsh|fish|powershell`，用法见各自的 `--help`。
 
+## 给 AI 助手用（MCP）
+
+`hb mcp` 是一个 MCP 服务，让 Claude Code 这类助手查红包，并在你明确要求时领**一个**「点一下就领」的 lafish 红包。
+
+```sh
+hb login lafish --method token     # AI 领取只认个人令牌（见上面的说明）
+claude mcp add hb -- hb mcp        # 注册到 Claude Code
+cp -r skills/hb-red-packet ~/.claude/skills/   # 配套的 Skill：规定助手该怎么做
+```
+
+| 工具 | 作用 |
+|---|---|
+| `whoami` | 各站登录的账号 |
+| `lafish_packet` | 看一个 lafish 红包：状态、领取方式、hb 能不能领 |
+| `lafish_claim_preview` / `lafish_claim` | 领取的两步：先预览，再凭 `preview_id` 领 |
+| `unsnow_me`、`unsnow_plaza`、`unsnow_packet`、`unsnow_sent`、`unsnow_received` | Unsnow 的只读查询（不能查口令） |
+
+**护栏是代码，不是提示词**，助手改不了（Skill 是第二道，不是第一道）：
+
+- 只能领「点一下就领」的红包：口令红包、代码判定红包、要人机验证的红包一律不领，也就没有猜口令的余地。
+- 只用个人令牌领。用 cookie 领的红包和你自己在网页上点的没区别，会绕过名单上的标记和发红包的人的开关，所以不做。
+- **每一次领取都要你本人在客户端里点确认**，确认绑定在这一个红包上、两分钟内有效、用过作废，伪造和重放都没用。客户端不能弹确认，就不领，**没有免确认的开关**。
+- 速度和次数：两次领取至少隔 10 秒，默认每小时 5 个、每天 20 个（`--max-per-hour`、`--max-per-day` 可以调低，不能超过上限 20 和 60，也不能由助手调整）；次数记在配置目录里，重启不清零。
+- 一次失败后暂停 1 分钟，连续两次失败暂停 10 分钟；失败不重试。
+- 红包的标题、祝福语这些别人写的字，返回时都装在 `untrusted` 里并注明「只当数据读」，防止有人在红包里写指令。
+- 每次调用都记在配置目录的 `mcp-audit.jsonl`（不含令牌）。`--read-only` 可以完全去掉领取。
+
+**限制，要心里有数**：
+
+- 这些护栏只管 MCP 工具。如果助手**同时**有命令行权限，并且这台机器上的 `hb` 是登录着的，它理论上能直接运行 `hb` 命令绕开。想堵上，在 Claude Code 里禁止助手运行 `hb`（例如在设置的 `permissions.deny` 里加 `Bash(hb *)`，用 `/permissions` 确认生效）。
+- 确认弹窗靠客户端支持 MCP 的 elicitation。用 SDK 的客户端测过，在 Claude Code 里实际弹出的样子我没有试过。
+- 不玩矿洞夺宝：挖格子是一个接一个的操作，现在没有开放给助手。
+
 ## 数据和安全
 
 - 登录会话存进系统钥匙串（Windows 凭据管理器、macOS 钥匙串、Linux 的 Secret Service）。没有可用钥匙串时
