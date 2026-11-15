@@ -2,6 +2,7 @@ package kddb
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -119,4 +120,81 @@ func (m *Model) hintPanel() string {
 		b.WriteString(dim.Render("（有些条件没用上，仅供参考）") + "\n")
 	}
 	return b.String()
+}
+
+// safeCells are the cells not dug and not fixed where the rules allow no danger,
+// in cell order.
+func (m *Model) safeCells(c PublicCard) []int {
+	var out []int
+	for _, i := range m.adviceOf(c).Safe {
+		if cellAt(c, i) == nil && c.Fixed[fmt.Sprint(i)] == "" {
+			out = append(out, i)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+// jumpSafe moves the cursor to the next (dir 1) or previous (dir -1) cell with
+// no danger, round the card. It moves the cursor and nothing else: digging is
+// still the person's key.
+func (m *Model) jumpSafe(dir int) {
+	switch {
+	case !m.opts.Hints:
+		m.notice = "建议功能没开：启动时加 --hints（它只提示，每一下还是你来挖）"
+		return
+	case !m.hintsOn:
+		m.notice = "建议是关的，按 H 打开"
+		return
+	}
+	c := m.current()
+	if c == nil {
+		return
+	}
+	cells := m.safeCells(*c)
+	if len(cells) == 0 {
+		m.notice = "没有确定零风险的格子（建议里写着风险最低的）"
+		return
+	}
+	target := cells[0]
+	if dir < 0 {
+		target = cells[len(cells)-1]
+	}
+	for k, i := range cells {
+		if dir > 0 && i > m.cur {
+			target = i
+			break
+		}
+		if dir < 0 && i < m.cur && (k == len(cells)-1 || cells[k+1] >= m.cur) {
+			target = i
+			break
+		}
+	}
+	m.cur = target
+	m.notice = fmt.Sprintf("跳到 %s：按规则推出这里没有危险（共 %d 格）", coord(c.Size, target), len(cells))
+}
+
+// jumpNearestSafe is what a dig leads to when the person turned that on: the
+// cursor goes to the nearest cell with no danger, if there is one, and stays
+// where it is if there is not.
+func (m *Model) jumpNearestSafe() {
+	if !m.autoJump || !m.hintsActive() {
+		return
+	}
+	c := m.current()
+	if c == nil || c.Size == 0 {
+		return
+	}
+	best, bestD := -1, 0
+	for _, i := range m.safeCells(*c) {
+		d := abs(i%c.Size-m.cur%c.Size) + abs(i/c.Size-m.cur/c.Size)
+		if best < 0 || d < bestD {
+			best, bestD = i, d
+		}
+	}
+	if best < 0 || best == m.cur {
+		return
+	}
+	m.cur = best
+	m.notice += fmt.Sprintf("  光标跳到了 %s（零风险）", coord(c.Size, best))
 }

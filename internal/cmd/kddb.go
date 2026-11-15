@@ -55,6 +55,8 @@ func newKddbCmd() *cobra.Command {
 		"turns the advisor on and records, for each dig YOU make, its guess and what the cell was, to check its accuracy later: hb hints report")
 	cmd.Flags().StringVar(&kddbRender, "render", "auto",
 		"auto | glyph | sprite: pixel icons need a true-colour terminal; a smaller font gives bigger icons (key z cycles)")
+	cmd.Flags().BoolVar(&kddbNoMouse, "no-mouse", false,
+		"do not capture the mouse (then the terminal can select text as usual; otherwise hold Shift to select)")
 	return cmd
 }
 
@@ -63,6 +65,7 @@ var (
 	kddbAutoClaim bool
 	kddbHints     bool
 	kddbHintsLog  bool
+	kddbNoMouse   bool
 	kddbRender    = "auto"
 )
 
@@ -163,7 +166,11 @@ func playKddb(cmd *cobra.Command, ctx context.Context, ls lafishSession, act laf
 		return err
 	}
 	model := kddb.NewModel(ctx, client, submit, kddbOptions(id))
-	_, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	progOpts := []tea.ProgramOption{tea.WithAltScreen(), tea.WithContext(ctx)}
+	if !kddbNoMouse {
+		progOpts = append(progOpts, tea.WithMouseCellMotion())
+	}
+	_, err = tea.NewProgram(model, progOpts...).Run()
 	return err
 }
 

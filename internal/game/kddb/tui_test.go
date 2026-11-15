@@ -353,13 +353,13 @@ func TestViewShowsEveryPanel(t *testing.T) {
 	m := newModel(t, &fakeGame{}, nil, Options{}, st)
 	m.width = 140
 	v := m.View()
-	for _, want := range []string{"矿洞夺宝", "奖池", "全图", "卡 #1", "我", "待领取", "镐子", "道具栏", "1 火把×2", "合成", "动态", "☼"} {
+	for _, want := range []string{"矿洞夺宝", "奖池", "矿图", "卡 #1", "我", "待领取", "镐子", "道具栏", "1 火把×2", "合成", "动态", "☼"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("view missing %q:\n%s", want, v)
 		}
 	}
 	m.width = 60 // narrow: stacked, no world map, still complete
-	if nv := m.View(); strings.Contains(nv, "全图") || !strings.Contains(nv, "待领取") {
+	if nv := m.View(); strings.Contains(nv, "矿图") || !strings.Contains(nv, "待领取") {
 		t.Errorf("narrow layout wrong:\n%s", nv)
 	}
 }

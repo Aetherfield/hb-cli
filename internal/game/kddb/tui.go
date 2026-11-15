@@ -141,9 +141,15 @@ type Model struct {
 	icons   map[iconKey]grid
 	stones  map[stoneKey]grid
 
-	hintsOn bool // the advisor's marks are shown (only if opts.Hints)
-	adv     adviceCache
-	pending *HintRecord // the guess for the dig that is in flight
+	hintsOn  bool // the advisor's marks are shown (only if opts.Hints)
+	adv      adviceCache
+	pending  *HintRecord // the guess for the dig that is in flight
+	autoJump bool        // after a dig, the cursor moves to the nearest cell with no danger (it never digs)
+
+	hit     hitMap    // where the clickable things are on the screen, as of the last View
+	gridTop int       // lines above the card's grid inside its panel
+	world   worldView // the map window
+	drag    dragState // a mouse button held down
 }
 
 type confirmAction struct {
@@ -153,7 +159,7 @@ type confirmAction struct {
 
 // NewModel builds the model. ctx stops the live connection when it ends.
 func NewModel(ctx context.Context, g Game, submit SubmitFunc, opts Options) *Model {
-	return &Model{game: g, submit: submit, opts: opts, ctx: ctx, live: make(chan Live, 64), step: "0.01", width: 100, hintsOn: opts.Hints}
+	return &Model{game: g, submit: submit, opts: opts, ctx: ctx, live: make(chan Live, 64), step: "0.01", width: 100, hintsOn: opts.Hints, autoJump: opts.Hints}
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -322,6 +328,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.claimNow = true
 			m.notice += "  （机会用完了，按 c 领取）"
 		}
+		m.jumpNearestSafe()
 	case useMsg:
 		m.busy = false
 		if msg.err != nil {
@@ -397,6 +404,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.notice = msg.line
+	case tea.MouseMsg:
+		return m.mouse(msg)
 	case tea.KeyMsg:
 		return m.key(msg)
 	}
@@ -500,6 +509,14 @@ func (m *Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.hintsOn = !m.hintsOn
 		m.notice = map[bool]string{true: "建议：开", false: "建议：关"}[m.hintsOn]
 		return m, nil
+	case "J": // after a dig, the cursor goes to the nearest cell with no danger
+		if !m.opts.Hints {
+			m.notice = "建议功能没开：启动时加 --hints"
+			return m, nil
+		}
+		m.autoJump = !m.autoJump
+		m.notice = map[bool]string{true: "挖完光标自动跳到零风险的格子（只移动光标，不会替你挖）", false: "挖完光标留在原地"}[m.autoJump]
+		return m, nil
 	case "z": // zoom: auto -> symbols -> 4 -> 6 -> 8 -> 16 px icons -> auto
 		m.zoom = nextZoom(m.zoom)
 		m.notice = "显示：" + m.zoomName()
@@ -518,6 +535,10 @@ func (m *Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.move(c, 0, -1)
 	case "down", "j":
 		m.move(c, 0, 1)
+	case "n":
+		m.jumpSafe(1)
+	case "N":
+		m.jumpSafe(-1)
 	case "[", "shift+tab", "pgup":
 		m.stepCard(-1)
 	case "]", "tab", "pgdown":

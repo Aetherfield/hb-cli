@@ -53,6 +53,7 @@ d 3 4 挖第 3 行第 4 列，s 看状态，m 看文本地图，b 老板键清�
 	f.StringVar(&input, "input", "", "text mode: submit this input once to the packet's judge")
 	f.BoolVar(&kddbAutoClaim, "auto-claim", false, "terminal game: claim what you already earned when chances run out or the wrap-up starts; never digs")
 	f.StringVar(&kddbRender, "render", "auto", "terminal game: auto | glyph | sprite")
+	f.BoolVar(&kddbNoMouse, "no-mouse", false, "terminal game: do not capture the mouse (so text can be selected as usual)")
 	f.BoolVar(&kddbHints, "hints", false, "terminal game: advisor (off by default); marks cells that cannot hold a danger, never digs for you")
 	f.BoolVar(&kddbHintsLog, "hints-log", false, "terminal game: advisor plus a local log of its guesses for the digs you make (hb hints report)")
 	return cmd

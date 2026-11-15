@@ -42,7 +42,10 @@ func (m *Model) View() string {
 		w = 40
 	}
 	var b strings.Builder
-	b.WriteString(m.header(w) + "\n")
+	head := m.header(w)
+	b.WriteString(head + "\n")
+	hy := lipgloss.Height(head) // the panels start on this screen row
+	m.hit = hitMap{}
 
 	card := m.current()
 	cardView := ""
@@ -60,11 +63,14 @@ func (m *Model) View() string {
 	const worldW = 34
 	switch {
 	case w >= cardW+meW+worldW:
-		world := panel.Render(m.worldMap(28, 12))
+		world := panel.Render(m.worldMap())
+		m.placeHits(hy, 0, lipgloss.Width(world))
 		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, world, cardView, me) + "\n")
 	case w >= cardW+meW:
+		m.placeHits(hy, -1, 0)
 		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, cardView, me) + "\n")
 	default:
+		m.placeHits(hy, -1, 0)
 		b.WriteString(cardView + "\n" + me + "\n")
 	}
 
@@ -168,6 +174,9 @@ func (m *Model) renderCard(c PublicCard) string {
 			fmt.Fprintf(&b, "噪音 %s\n", warn.Render(fmt.Sprint(int(c.Noise))))
 		}
 	}
+	m.gridTop = strings.Count(b.String(), "\n")
+	m.hit.size, m.hit.cardID = c.Size, c.ID
+	m.hit.sprite = m.spriteSize(&c)
 	gridW := c.Size * 3
 	if t := m.spriteSize(&c); t > 0 {
 		gridW = cardPixelSize(c.Size, t)
@@ -308,82 +317,22 @@ func cellAt(c PublicCard, idx int) *OpenCell {
 	return nil
 }
 
-// ---- the world map ----
-
-// worldMap draws every card where it sits on the shared canvas, shaded by how
-// much of it is dug, with the selected card highlighted.
-func (m *Model) worldMap(maxW, maxH int) string {
-	cards := m.cards()
-	if len(cards) == 0 {
-		return dim.Render("还没有地图")
+// placeHits puts the clickable things on the screen: the panels start at row
+// top, the map panel at column worldX (-1: not shown) and the card panel at cardX.
+func (m *Model) placeHits(top, worldX, cardX int) {
+	fx, fy := panel.GetBorderLeftSize()+panel.GetPaddingLeft(), panel.GetBorderTopSize()+panel.GetPaddingTop()
+	if m.hit.size > 0 {
+		m.hit.grid = true
+		m.hit.gx, m.hit.gy = cardX+fx, top+fy+m.gridTop
 	}
-	minX, minY, maxX, maxY := cards[0].X, cards[0].Y, cards[0].X+cards[0].Size, cards[0].Y+cards[0].Size
-	for _, c := range cards {
-		minX, minY = min(minX, c.X), min(minY, c.Y)
-		maxX, maxY = max(maxX, c.X+c.Size), max(maxY, c.Y+c.Size)
+	if worldX >= 0 && m.hit.vw > 0 {
+		m.hit.world = true
+		m.hit.wx, m.hit.wy = worldX+fx, top+fy+1 // under the map's title line
+		m.hit.ww, m.hit.wh = m.hit.vw*2, m.hit.vh
 	}
-	bw, bh := float64(maxX-minX), float64(maxY-minY)
-	sx := float64(maxW) / bw
-	if sy := float64(maxH) / bh * 2; sy < sx { // a character is about twice as tall as wide
-		sx = sy
-	}
-	sy := sx / 2
-	if sx > 2 {
-		sx, sy = 2, 1
-	}
-	cw, ch := int(bw*sx+0.999), int(bh*sy+0.999)
-	canvas := make([][]string, ch)
-	for i := range canvas {
-		canvas[i] = make([]string, cw)
-		for j := range canvas[i] {
-			canvas[i][j] = " "
-		}
-	}
-	cur := m.current()
-	shades := []string{"░", "▒", "▓", "█"}
-	for _, c := range cards {
-		x0, y0 := int(float64(c.X-minX)*sx), int(float64(c.Y-minY)*sy)
-		w, h := max(3, int(float64(c.Size)*sx)), max(2, int(float64(c.Size)*sy))
-		// leave a gap so neighbouring cards of the same biome stay apart
-		if w >= 5 {
-			w--
-		}
-		if h >= 3 {
-			h--
-		}
-		ratio := float64(c.Opened()) / float64(c.Size*c.Size)
-		shade := shades[min(3, int(ratio*4))]
-		col := biomeColor[c.Kind]
-		if col == "" {
-			col = "250"
-		}
-		st := lipgloss.NewStyle().Foreground(lipgloss.Color(col))
-		if c.Closed {
-			st = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-		}
-		if cur != nil && c.ID == cur.ID {
-			st = st.Bold(true).Reverse(true)
-		}
-		label := fmt.Sprint(c.ID)
-		for y := y0; y < y0+h && y < ch; y++ {
-			for x := x0; x < x0+w && x < cw; x++ {
-				s := shade
-				if y == y0+h/2 && x >= x0+(w-len(label))/2 && x < x0+(w-len(label))/2+len(label) {
-					s = string(label[x-(x0+(w-len(label))/2)])
-				}
-				canvas[y][x] = st.Render(s)
-			}
-		}
-	}
-	var b strings.Builder
-	b.WriteString(bold.Render("全图") + dim.Render(fmt.Sprintf("  %d 张卡", len(cards))) + "\n")
-	for _, row := range canvas {
-		b.WriteString(strings.Join(row, "") + "\n")
-	}
-	b.WriteString(dim.Render("░▒▓█ 越深挖得越多") + "\n")
-	b.WriteString(dim.Render("[ ] 或 Tab 换卡；走到卡边继续走会过去"))
-	return b.String()
 }
+
+// ---- the world map ----
 
 // ---- you ----
 
@@ -516,7 +465,11 @@ func (m *Model) hint() string {
 	case modeConfirm, modeChoose:
 		return ""
 	}
-	return dim.Render("←↑↓→/hjkl 移动  空格/回车 挖  1-9 道具  [ ] 换卡  c 领取  g 收益卡  z 缩放  r 刷新  ? 帮助  q 退出")
+	extra := ""
+	if m.hintsActive() {
+		extra = "n 零风险格  "
+	}
+	return dim.Render("←↑↓→/hjkl 或鼠标 移动  空格/回车 挖  1-9 道具  [ ] 换卡  " + extra + "c 领取  g 收益卡  z 缩放  r 刷新  ? 帮助  q 退出")
 }
 
 // ---- overlays ----
@@ -596,7 +549,11 @@ func (m *Model) helpView() string {
 	b.WriteString("  z             缩放：自动 → 符号 → 4/6/8/16 像素图标（16 是原版贴图的原始大小，一格占 16 列 8 行）。把终端字体调小，格子就更大更清楚\n")
 	b.WriteString("  r             重新拉取状态     q  退出\n")
 	b.WriteString("  H             显示/隐藏建议（启动时要加 --hints 才有）：绿色 + 是按规则推出不可能有危险的格子，\n")
-	b.WriteString("                光标所在格会写危险概率（估算）。它只给建议，挖不挖、挖哪格都是你按键\n\n")
+	b.WriteString("                光标所在格会写危险概率（估算）。它只给建议，挖不挖、挖哪格都是你按键\n")
+	b.WriteString("  n / N         （建议开着时）光标跳到下一个 / 上一个零风险的格子；只移动光标，不会挖\n")
+	b.WriteString("  J             开关「挖完自动把光标跳到最近的零风险格」；同样只移动光标\n\n")
+	b.WriteString(bold.Render("鼠标") + "  点一格：把光标放过去；拖动是瞄准，松手不会挖；在光标已经停着的那一格上再点一下才挖（或按回车）\n")
+	b.WriteString("       点矿图里的卡：去那张卡；在矿图上拖动：平移；滚轮：上下移。想复制文字就按住 Shift 再选（或启动时加 --no-mouse）\n\n")
 	b.WriteString(bold.Render("图标") + "  像素图标要真彩色终端；想用 Minecraft 原版贴图：运行 hb assets fetch（现场从 Mojang 官方取，不随 hb 分发）\n\n")
 	b.WriteString(bold.Render("格子") + "\n  ")
 	for _, k := range []Kind{"emerald", "diamond", "apple", "totem", "tnt", "pearl", "eye", "shield", "spyglass", "crystal", "coal", "stick", "map", "potion", "key", "vault", "lava", "cobweb", "spawner", "minecart", "ender"} {

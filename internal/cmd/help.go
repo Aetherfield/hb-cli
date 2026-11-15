@@ -73,6 +73,7 @@ var flagUsage = map[string]string{
 	"auto-claim":      "机会用完或收尾开始时，自动领取已经挖到的（只领取，从不替你挖）",
 	"hints":           "开启建议（默认关）：标出不可能有危险的格子，估算其余格子的风险；只提示，每次挖掘都由你来",
 	"hints-log":       "开启建议，并在本地记下你每次挖之前它的判断和结果，之后用 hb hints report 检验准不准",
+	"no-mouse":        "不接管鼠标（这样终端可以照常选中文字；不加这个时按住 Shift 再选）",
 	"render":          "图标模式：auto | glyph | sprite（像素图标要真彩色终端，字体调小图标更大，按 z 切换）",
 	"file":            "日志文件（默认是配置目录里的 hints-log.jsonl）",
 	"no-descriptions": "补全时不带说明",

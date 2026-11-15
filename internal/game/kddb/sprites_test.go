@@ -185,7 +185,7 @@ func TestViewWithIconsStaysComplete(t *testing.T) {
 	m := newModel(t, &fakeGame{}, nil, Options{Render: "sprite", TrueColor: true}, st)
 	m.width, m.height = 200, 80 // room for 16px icons and the world map beside them
 	v := m.View()
-	for _, want := range []string{"▀", "卡 #1", "待领取", "道具栏", "动态", "全图"} {
+	for _, want := range []string{"▀", "卡 #1", "待领取", "道具栏", "动态", "矿图"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("missing %q in the icon view", want)
 		}
