@@ -472,7 +472,7 @@ func (m *Model) hint() string {
 	}
 	extra := ""
 	if m.hintsActive() {
-		extra = "n 零风险格  "
+		extra = "n 下个零风险格(跨卡)  "
 	}
 	return dim.Render("←↑↓→/hjkl 或鼠标 移动  空格/回车 挖  1-9 道具  [ ] 换卡  " + extra + "c 领取  g 收益卡  z 缩放  r 刷新  ? 帮助  q 退出")
 }
@@ -555,8 +555,8 @@ func (m *Model) helpView() string {
 	b.WriteString("  r             重新拉取状态     q  退出\n")
 	b.WriteString("  H             显示/隐藏建议（启动时要加 --hints 才有）：绿色 + 是按规则推出不可能有危险的格子，\n")
 	b.WriteString("                光标所在格会写危险概率（估算）。它只给建议，挖不挖、挖哪格都是你按键\n")
-	b.WriteString("  n / N         （建议开着时）光标跳到下一个 / 上一个零风险的格子；只移动光标，不会挖\n")
-	b.WriteString("  J             开关「挖完自动把光标跳到最近的零风险格」；同样只移动光标\n\n")
+	b.WriteString("  n / N         （建议开着时）光标跳到下一个 / 上一个零风险的格子，跨卡片（会切卡，到头绕一圈，关闭的卡跳过）；只移动光标，不会挖\n")
+	b.WriteString("  J             开关「挖完自动把光标跳到最近的零风险格」（这张卡没有了就去下一张有的卡）；同样只移动光标\n\n")
 	b.WriteString(bold.Render("鼠标") + "  点一格：把光标放过去；拖动是瞄准，松手不会挖；在光标已经停着的那一格上再点一下才挖（或按回车）\n")
 	b.WriteString("       矿图一块是一张卡（颜色＝群系，条＝挖了多少，亮的是你在的那张）：点一块就去那张卡；在矿图上拖动：平移；滚轮：上下移。想复制文字就按住 Shift 再选（或启动时加 --no-mouse）\n\n")
 	b.WriteString(bold.Render("图标") + "  像素图标要真彩色终端；想用 Minecraft 原版贴图：运行 hb assets fetch（现场从 Mojang 官方取，不随 hb 分发）\n\n")

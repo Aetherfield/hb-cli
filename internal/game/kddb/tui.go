@@ -142,7 +142,7 @@ type Model struct {
 	stones  map[stoneKey]grid
 
 	hintsOn  bool // the advisor's marks are shown (only if opts.Hints)
-	adv      adviceCache
+	adv      map[int]adviceCache
 	pending  *HintRecord // the guess for the dig that is in flight
 	autoJump bool        // after a dig, the cursor moves to the nearest cell with no danger (it never digs)
 

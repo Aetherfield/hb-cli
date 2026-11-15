@@ -252,7 +252,7 @@ func TestJumpSafeExplainsWhenItCannot(t *testing.T) {
 	st.Game.Cards[0].Torches = nil
 	m = newModel(t, digOK(), nil, Options{Hints: true, Render: "glyph"}, st)
 	run(t, m, key(m, "n"))
-	if !strings.Contains(m.notice, "没有确定零风险") || m.cur != 0 {
+	if !strings.Contains(m.notice, "没有哪张卡") || m.cur != 0 {
 		t.Fatalf("no safe cells: %q cur=%d", m.notice, m.cur)
 	}
 }
@@ -315,5 +315,64 @@ func TestWorldMapKeepsEveryCardApart(t *testing.T) {
 		if !strings.Contains(v, id+" ") {
 			t.Errorf("card %s missing:\n%s", id, v)
 		}
+	}
+}
+
+// two cards, both with a green torch in the middle: cells 6..8, 11..13, 16..18 are safe
+func twoCards() State {
+	st := hintState()
+	b := card(2, 1, 0, 5)
+	b.Left = map[Kind]int{"tnt": 4, "emerald": 21}
+	b.Torches = []Torch{{At: 12, Level: 0, V: 2}}
+	st.Game.Cards = append(st.Game.Cards, b)
+	return st
+}
+
+func TestJumpSafeCrossesCards(t *testing.T) {
+	g := digOK()
+	m := newModel(t, g, nil, Options{Hints: true, Render: "glyph"}, twoCards())
+	m.cur = 18 // the last safe cell of card 1
+	run(t, m, key(m, "n"))
+	if m.current().ID != 2 || m.cur != 6 {
+		t.Fatalf("n goes on to card 2: card=%d cur=%d", m.current().ID, m.cur)
+	}
+	run(t, m, key(m, "N"))
+	if m.current().ID != 1 || m.cur != 18 {
+		t.Fatalf("N goes back to card 1's last: card=%d cur=%d", m.current().ID, m.cur)
+	}
+	m.selectCard(2)
+	m.cur = 18
+	run(t, m, key(m, "n")) // the last of the last card: round to the first
+	if m.current().ID != 1 || m.cur != 6 || !strings.Contains(m.notice, "卡 #1") {
+		t.Fatalf("n wraps round the mine: card=%d cur=%d %q", m.current().ID, m.cur, m.notice)
+	}
+	if g.digs != 0 {
+		t.Fatal("jumping never digs")
+	}
+}
+
+func TestJumpSafeSkipsCardsWithNoSafeCellAndClosedOnes(t *testing.T) {
+	st := twoCards()
+	st.Game.Cards[0].Torches = nil // card 1: nothing certain
+	m := newModel(t, digOK(), nil, Options{Hints: true, Render: "glyph"}, st)
+	run(t, m, key(m, "n"))
+	if m.current().ID != 2 || m.cur != 6 {
+		t.Fatalf("card=%d cur=%d", m.current().ID, m.cur)
+	}
+	m.st.Game.Cards[1].Closed = true
+	m.selectCard(1)
+	run(t, m, key(m, "n"))
+	if !strings.Contains(m.notice, "没有哪张卡") {
+		t.Fatalf("a closed card has nothing to dig: %q", m.notice)
+	}
+}
+
+func TestAutoJumpGoesToTheNextCardWhenThisOneHasNone(t *testing.T) {
+	st := twoCards()
+	st.Game.Cards[0].Torches = nil
+	m := newModel(t, digOK(), nil, Options{Hints: true, Render: "glyph"}, st)
+	m.jumpNearestSafe()
+	if m.current().ID != 2 || m.cur != 6 || !strings.Contains(m.notice, "卡 #2") {
+		t.Fatalf("card=%d cur=%d %q", m.current().ID, m.cur, m.notice)
 	}
 }

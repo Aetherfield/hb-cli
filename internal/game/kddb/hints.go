@@ -20,10 +20,13 @@ func (m *Model) hintsActive() bool { return m.opts.Hints && m.hintsOn }
 // adviceOf is Advise for a card, remembered until something it depends on changes.
 func (m *Model) adviceOf(c PublicCard) Advice {
 	key := fmt.Sprintf("%d|%d|%d|%d|%d|%d", c.ID, m.st.Game.Seq, c.Opened(), len(c.Torches), len(m.st.Me.Peeks), len(c.Left))
-	if m.adv.key != key {
-		m.adv = adviceCache{key, Advise(c, m.st.Me.Peeks)}
+	if m.adv == nil {
+		m.adv = map[int]adviceCache{}
 	}
-	return m.adv.adv
+	if a, ok := m.adv[c.ID]; !ok || a.key != key {
+		m.adv[c.ID] = adviceCache{key, Advise(c, m.st.Me.Peeks)}
+	}
+	return m.adv[c.ID].adv
 }
 
 // notePrediction remembers the advisor's guess for a cell about to be dug (only
@@ -135,9 +138,26 @@ func (m *Model) safeCells(c PublicCard) []int {
 	return out
 }
 
+// safeSpot is a cell with no danger, on some card.
+type safeSpot struct{ card, idx int }
+
+// safeSpots lists every such cell of every open card, in card then cell order.
+func (m *Model) safeSpots() []safeSpot {
+	var out []safeSpot
+	for _, c := range m.cards() {
+		if c.Closed {
+			continue
+		}
+		for _, i := range m.safeCells(c) {
+			out = append(out, safeSpot{c.ID, i})
+		}
+	}
+	return out
+}
+
 // jumpSafe moves the cursor to the next (dir 1) or previous (dir -1) cell with
-// no danger, round the card. It moves the cursor and nothing else: digging is
-// still the person's key.
+// no danger, on this card or any other, round the whole mine. It moves the
+// cursor (and the card) and nothing else: digging is still the person's key.
 func (m *Model) jumpSafe(dir int) {
 	switch {
 	case !m.opts.Hints:
@@ -151,32 +171,36 @@ func (m *Model) jumpSafe(dir int) {
 	if c == nil {
 		return
 	}
-	cells := m.safeCells(*c)
-	if len(cells) == 0 {
-		m.notice = "没有确定零风险的格子（建议里写着风险最低的）"
+	spots := m.safeSpots()
+	if len(spots) == 0 {
+		m.notice = "没有哪张卡有确定零风险的格子（建议里写着风险最低的）"
 		return
 	}
-	target := cells[0]
+	before := func(s safeSpot) bool { return s.card < c.ID || (s.card == c.ID && s.idx < m.cur) }
+	after := func(s safeSpot) bool { return s.card > c.ID || (s.card == c.ID && s.idx > m.cur) }
+	target := spots[0]
 	if dir < 0 {
-		target = cells[len(cells)-1]
+		target = spots[len(spots)-1]
 	}
-	for k, i := range cells {
-		if dir > 0 && i > m.cur {
-			target = i
+	for k, s := range spots {
+		if dir > 0 && after(s) {
+			target = s
 			break
 		}
-		if dir < 0 && i < m.cur && (k == len(cells)-1 || cells[k+1] >= m.cur) {
-			target = i
+		if dir < 0 && before(s) && (k == len(spots)-1 || !before(spots[k+1])) {
+			target = s
 			break
 		}
 	}
-	m.cur = target
-	m.notice = fmt.Sprintf("跳到 %s：按规则推出这里没有危险（共 %d 格）", coord(c.Size, target), len(cells))
+	m.selectCard(target.card)
+	m.cur = target.idx
+	to := m.current()
+	m.notice = fmt.Sprintf("跳到卡 #%d 的 %s：按规则推出这里没有危险（全矿共 %d 格）", target.card, coord(to.Size, target.idx), len(spots))
 }
 
 // jumpNearestSafe is what a dig leads to when the person turned that on: the
-// cursor goes to the nearest cell with no danger, if there is one, and stays
-// where it is if there is not.
+// cursor goes to the nearest cell with no danger on this card; if this card has
+// none, to the next card's first one; and stays where it is if there is none.
 func (m *Model) jumpNearestSafe() {
 	if !m.autoJump || !m.hintsActive() {
 		return
@@ -192,9 +216,26 @@ func (m *Model) jumpNearestSafe() {
 			best, bestD = i, d
 		}
 	}
-	if best < 0 || best == m.cur {
+	if best >= 0 {
+		if best != m.cur {
+			m.cur = best
+			m.notice += fmt.Sprintf("  光标跳到了 %s（零风险）", coord(c.Size, best))
+		}
 		return
 	}
-	m.cur = best
-	m.notice += fmt.Sprintf("  光标跳到了 %s（零风险）", coord(c.Size, best))
+	if spots := m.safeSpots(); len(spots) > 0 {
+		for _, s := range spots {
+			if s.card > c.ID {
+				m.jumpTo(s)
+				return
+			}
+		}
+		m.jumpTo(spots[0])
+	}
+}
+
+func (m *Model) jumpTo(s safeSpot) {
+	m.selectCard(s.card)
+	m.cur = s.idx
+	m.notice += fmt.Sprintf("  这张卡没有零风险格了，去了卡 #%d 的 %s", s.card, coord(m.current().Size, s.idx))
 }
