@@ -62,6 +62,10 @@ var catalog = map[string]map[Lang]string{
 		ZH: "独立干净浏览器 — 登录一次，之后各站共用（仅 Chromium 系：Chrome/Edge/Brave…）",
 		EN: "Clean dedicated browser — log in once, shared by all sites (Chromium family only)",
 	},
+	"login.m.token": {
+		ZH: "个人令牌 — 粘贴你在网页上创建的令牌（不用浏览器；要站点已经上线这个功能）",
+		EN: "Personal token — paste one made on the site (no browser; the site must offer them)",
+	},
 	"login.ext.install": {
 		ZH: "Chrome/Edge/Brave 等:\n  1) 打开 chrome://extensions（Edge: edge://extensions），开启「开发者模式」\n  2) 「加载已解压的扩展程序」选择: %s（只需装一次）\nFirefox 系:\n  1) 打开 about:debugging#/runtime/this-firefox → 「临时载入附加组件」，选上面目录里的 manifest.json\n  2) 在 about:addons → 该扩展 → 权限，允许访问站点（重启 Firefox 后需重新载入）",
 		EN: "Chrome/Edge/Brave etc.:\n  1) open chrome://extensions (Edge: edge://extensions), enable Developer mode\n  2) \"Load unpacked\" and pick: %s (one-time)\nFirefox family:\n  1) open about:debugging#/runtime/this-firefox -> \"Load Temporary Add-on\", pick manifest.json in that folder\n  2) in about:addons -> the extension -> Permissions, allow site access (re-load after a Firefox restart)",

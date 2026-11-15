@@ -42,6 +42,7 @@ const (
 	methodClone = "clone" // copy everyday profile, open it with a debug port
 	methodPaste = "paste" // paste the cookie by hand
 	methodClean = "clean" // dedicated empty profile, log in once
+	methodToken = "token" // the site's own personal token, pasted
 )
 
 func newLoginCmd() *cobra.Command {
@@ -59,13 +60,13 @@ func newLoginCmd() *cobra.Command {
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&o.method, "method", "", "ext | clone | paste | clean (default: ask)")
+	f.StringVar(&o.method, "method", "", "ext | clone | paste | clean | token (default: ask)")
 	f.StringVar(&o.browserSpec, "browser", "",
 		"browser: "+browser.KindIDs()+", or path to its exe (default: system default browser, or $HB_BROWSER)")
 	f.StringVar(&o.fromProfile, "from-profile", "Default", "clone: browser profile directory name to copy")
 	f.BoolVar(&o.keepClone, "keep-clone", false, "clone: keep the copied profile afterwards (default: delete it)")
 	f.DurationVar(&o.timeout, "timeout", 5*time.Minute, "how long to wait for you to finish logging in")
-	f.BoolVar(&o.tokenStdin, "token-stdin", false, "sites with a personal token (unsnow): read it from stdin instead of asking")
+	f.BoolVar(&o.tokenStdin, "token-stdin", false, "sites with a personal token (lafish, unsnow): read it from stdin instead of asking")
 	return cmd
 }
 
@@ -97,24 +98,28 @@ func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
 	if err != nil {
 		return err
 	}
-	if spec := p.LoginSpec(); spec.Token != nil {
-		ctx, cancel := context.WithTimeout(cmd.Context(), o.timeout)
-		defer cancel()
-		s, err := loginToken(cmd, p, *spec.Token, o.tokenStdin)
-		if err != nil {
-			return err
-		}
-		return finishLogin(ctx, cmd, p, prof, s)
+	spec := p.LoginSpec()
+	if (o.tokenStdin || o.method == methodToken) && spec.Token == nil {
+		return fmt.Errorf("%s 没有个人令牌，不能用 --method token / --token-stdin", p.Name())
+	}
+	// A site with no cookie way in (Unsnow) is token only; one with both
+	// (lafish) takes --method token, --token-stdin, or the choice below.
+	if spec.Token != nil && (len(spec.CookieURLs) == 0 || o.tokenStdin) {
+		o.method = methodToken
 	}
 	if o.method == "" {
-		if o.method, err = selectOne(i18n.T("login.pick.method"), []choice{
+		methods := []choice{
 			{i18n.T("login.m.ext"), methodExt},
 			{i18n.T("login.m.clone"), methodClone},
 			{i18n.T("login.m.paste"), methodPaste},
 			{i18n.T("login.m.clean"), methodClean},
-		}); err != nil {
+		}
+		if spec.Token != nil {
+			methods = append(methods, choice{i18n.T("login.m.token"), methodToken})
+		}
+		if o.method, err = selectOne(i18n.T("login.pick.method"), methods); err != nil {
 			if errors.Is(err, ErrNotInteractive) {
-				return errors.New("pass --method ext|clone|paste|clean (no interactive terminal)")
+				return errors.New("pass --method ext|clone|paste|clean|token (no interactive terminal)")
 			}
 			return err
 		}
@@ -125,6 +130,8 @@ func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
 
 	var s auth.Session
 	switch o.method {
+	case methodToken:
+		s, err = loginToken(cmd, p, *spec.Token, o.tokenStdin)
 	case methodExt:
 		s, err = loginExt(ctx, cmd, p)
 	case methodClone:
@@ -134,7 +141,7 @@ func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
 	case methodClean:
 		s, err = loginClean(ctx, cmd, p, o)
 	default:
-		return fmt.Errorf("unknown --method %q (ext|clone|paste|clean)", o.method)
+		return fmt.Errorf("unknown --method %q (ext|clone|paste|clean|token)", o.method)
 	}
 	if err != nil {
 		return err
@@ -144,7 +151,7 @@ func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
 
 // finishLogin fills a missing CSRF token, checks the session works, and saves it.
 func finishLogin(ctx context.Context, cmd *cobra.Command, p provider.Provider, prof string, s auth.Session) error {
-	if s.CSRF == "" {
+	if s.CSRF == "" && s.Token == "" { // a personal token has no CSRF token
 		if f, ok := p.(provider.CSRFFetcher); ok {
 			if tok, err := f.FetchCSRF(ctx, s); err == nil {
 				s.CSRF = tok

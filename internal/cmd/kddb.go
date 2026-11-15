@@ -123,7 +123,7 @@ func openLafish(ctx context.Context) (lafishSession, error) {
 	if !ok {
 		return lafishSession{}, errors.New("lafish provider unavailable")
 	}
-	if s.CSRF == "" {
+	if s.CSRF == "" && s.Token == "" { // a personal token has no CSRF token
 		if tok, err := lf.FetchCSRF(ctx, s); err == nil {
 			s.CSRF = tok
 		}

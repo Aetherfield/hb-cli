@@ -22,9 +22,16 @@ type APIError struct {
 	Message    string
 	RetryAfter time.Duration // from Retry-After on 429
 	Body       json.RawMessage
+	ByToken    bool // the request carried a personal token, not the cookie
 }
 
 func (e *APIError) Error() string {
+	if e.ByToken && e.Code == "INVALID_PERSONAL_TOKEN" {
+		return "lafish: 令牌不对、已过期或已停用；到「我的 → 个人令牌」重新创建，再运行 `hb login lafish`"
+	}
+	if e.ByToken && e.Code == "PERSONAL_TOKEN_NOT_ALLOWED" {
+		return "lafish: 这个操作令牌做不了（令牌只管查看、领取、口令兑换和附带网页认人），请在网页上操作"
+	}
 	return fmt.Sprintf("lafish: HTTP %d %s: %s", e.Status, e.Code, e.Message)
 }
 
@@ -61,9 +68,13 @@ func (l *Lafish) do(ctx context.Context, s auth.Session, method, path string, bo
 	req.Header.Set("Accept", "application/json")
 	if method != http.MethodGet {
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Origin", l.origin())
-		if s.CSRF != "" {
-			req.Header.Set("X-CSRF-Token", s.CSRF)
+		// Origin and CSRF guard the cookie session; a personal token is not a
+		// cookie, so the site asks neither of it.
+		if s.Token == "" {
+			req.Header.Set("Origin", l.origin())
+			if s.CSRF != "" {
+				req.Header.Set("X-CSRF-Token", s.CSRF)
+			}
 		}
 	}
 	resp, err := l.HTTP.Do(ctx, req)
@@ -75,7 +86,7 @@ func (l *Lafish) do(ctx context.Context, s auth.Session, method, path string, bo
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return raw, nil
 	}
-	ae := &APIError{Status: resp.StatusCode, Body: raw}
+	ae := &APIError{Status: resp.StatusCode, Body: raw, ByToken: s.Token != ""}
 	var env struct {
 		Error struct {
 			Code    string `json:"code"`

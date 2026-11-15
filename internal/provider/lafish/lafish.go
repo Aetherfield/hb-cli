@@ -2,6 +2,8 @@
 //
 // Claim/plaza/history/balance use the browser session (cookie hb_session +
 // Origin + X-CSRF-Token); see docs in LeUKi/hb apps/api/src/auth/session.ts.
+// A 个人令牌 (hbp_…, made on the site's 我的 page; LeUKi/hb docs/personal-token-design.md)
+// does the same without the cookie: Authorization: Bearer, no Origin or CSRF.
 package lafish
 
 import (
@@ -10,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"hb/internal/auth"
@@ -21,6 +24,12 @@ const (
 	Origin     = "https://hb.lafi.sh"
 	sessionURL = Origin + "/api/session"
 )
+
+// tokenRe is a personal token's shape: hbp_ and 32 base64url characters.
+var tokenRe = regexp.MustCompile(`^hbp_[A-Za-z0-9_-]{32}$`)
+
+// ValidToken says whether s looks like a lafish personal token.
+func ValidToken(s string) bool { return tokenRe.MatchString(s) }
 
 func init() { provider.Register(&Lafish{BaseURL: sessionURL, HTTP: httpx.New()}) }
 
@@ -45,6 +54,11 @@ func (*Lafish) LoginSpec() provider.LoginSpec {
 		CookieNames: []string{"hb_session"},
 		CSRFURL:     sessionURL,
 		CSRFField:   "csrfToken",
+		Token: &provider.TokenLogin{
+			Prefix:   "hbp_",
+			CreateAt: "网页「我的 → 个人令牌」（" + Origin + "/me）",
+			Valid:    ValidToken,
+		},
 	}
 }
 
@@ -57,7 +71,7 @@ func (l *Lafish) FetchCSRF(ctx context.Context, s auth.Session) (string, error) 
 	if r.User == nil {
 		return "", fmt.Errorf("cookie is not logged in")
 	}
-	return r.CSRFToken, nil
+	return r.CSRFToken, nil // null (so "") for a personal token: it has none
 }
 
 // sessionResp is GET /api/session. Only fields we rely on are typed; the
@@ -97,6 +111,11 @@ func (l *Lafish) Whoami(ctx context.Context, s auth.Session) (provider.Identity,
 		return provider.Identity{}, err
 	}
 	if r.User == nil {
+		if s.Token != "" {
+			// Where the site has not shipped personal tokens yet, the header is
+			// ignored and the request reads as anonymous.
+			return provider.Identity{}, fmt.Errorf("令牌没有被接受：它可能已停用或过期，也可能这个站点还没有上线个人令牌；到「我的 → 个人令牌」确认，再运行 `hb login lafish`")
+		}
 		return provider.Identity{}, fmt.Errorf("not logged in (session expired?); run `hb login lafish`")
 	}
 	return provider.Identity{ID: str(r.User["id"]), Username: firstNonEmpty(str(r.User["username"]), str(r.User["name"]))}, nil
