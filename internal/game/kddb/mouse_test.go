@@ -110,25 +110,36 @@ func TestMouseIgnoredWhileBusyAndInOtherModes(t *testing.T) {
 func bigWorld() State {
 	st := baseState()
 	a := card(1, 0, 0, 3)
-	b := card(2, 5, 0, 3)
-	c := card(3, 40, 30, 3) // far away: the window has to pan
+	b := card(2, 1, 0, 3) // x, y are places in the mine, one per card
+	c := card(3, 40, 30, 3)
 	st.Game.Cards = []PublicCard{a, b, c}
 	return st
 }
 
-func TestMouseWorldClickSelectsCardAndCell(t *testing.T) {
-	m := mouseModel(t, digOK(), Options{}, bigWorld())
+func TestMouseWorldClickGoesToTheCard(t *testing.T) {
+	g := digOK()
+	m := mouseModel(t, g, Options{}, bigWorld())
 	if !m.hit.world {
 		t.Fatal("the map window was not recorded")
 	}
-	// find card 2's cell (1,1) on the screen
-	m.world.panned = false
-	m.View()
-	sx := m.hit.wx + (5+1-m.hit.minX)*3
-	sy := m.hit.wy + (0 + 1 - m.hit.minY)
+	sx := m.hit.wx + (1-m.hit.minX)*tileCols + 1 // card 2's tile
+	sy := m.hit.wy + (0-m.hit.minY)*tileRows
 	click(t, m, sx, sy)
-	if cur := m.current(); cur == nil || cur.ID != 2 || m.cur != 4 {
-		t.Fatalf("clicked card 2 cell 4: card=%v cur=%d", m.current(), m.cur)
+	if cur := m.current(); cur == nil || cur.ID != 2 {
+		t.Fatalf("clicked card 2: %v", m.current())
+	}
+	click(t, m, sx, sy)
+	if g.digs != 0 {
+		t.Fatal("a click on the map never digs")
+	}
+	// the tile of card 3 is far away: panning to it works
+	m.world.panX, m.world.panY = 99, 99
+	m.View()
+	sx = m.hit.wx + (40-m.hit.minX)*tileCols
+	sy = m.hit.wy + (30-m.hit.minY)*tileRows + 1
+	click(t, m, sx, sy)
+	if m.current().ID != 3 {
+		t.Fatalf("after panning, clicked card 3: %v", m.current())
 	}
 }
 
@@ -137,10 +148,10 @@ func TestMouseWorldDragPansAndClamps(t *testing.T) {
 	x, y := m.hit.wx+4, m.hit.wy+2
 	px, py := m.world.panX, m.world.panY
 	run(t, m, mev(m, x, y, tea.MouseActionPress, tea.MouseButtonLeft))
-	run(t, m, mev(m, x-12, y-2, tea.MouseActionMotion, tea.MouseButtonLeft))
-	run(t, m, mev(m, x-12, y-2, tea.MouseActionRelease, tea.MouseButtonNone))
+	run(t, m, mev(m, x-10, y-4, tea.MouseActionMotion, tea.MouseButtonLeft))
+	run(t, m, mev(m, x-10, y-4, tea.MouseActionRelease, tea.MouseButtonNone))
 	m.View()
-	if m.world.panX != px+4 || m.world.panY != py+2 || !m.world.panned {
+	if m.world.panX != px+2 || m.world.panY != py+2 || !m.world.panned {
 		t.Fatalf("pan %d,%d from %d,%d", m.world.panX, m.world.panY, px, py)
 	}
 	if m.current().ID != 1 {
@@ -291,27 +302,18 @@ func TestAutoJumpOffWithoutTheAdvisor(t *testing.T) {
 	}
 }
 
-func TestMouseWorldCellClickSelectsThenDigs(t *testing.T) {
-	cell := json.RawMessage(`{"type":"cell","seq":2,"cardId":2,"index":4,"cell":{"kind":"emerald","uid":7,"name":"me","at":1},"left":990,"text":"ok"}`)
-	g := &fakeGame{digAnswer: DigAnswer{OK: true, Result: &DigResult{Text: "ok"}, Me: Me{Chances: 4, Status: "playing"}, Update: cell}}
-	m := mouseModel(t, g, Options{}, bigWorld())
-	sx := m.hit.wx + (5+1-m.hit.minX)*3 + 1 // the middle column of card 2's centre cell
-	sy := m.hit.wy + (0 + 1 - m.hit.minY)
-	click(t, m, sx, sy)
-	if m.current().ID != 2 || m.cur != 4 || g.digs != 0 {
-		t.Fatalf("first click selects: card=%d cur=%d digs=%d", m.current().ID, m.cur, g.digs)
-	}
-	click(t, m, sx, sy)
-	if g.digs != 1 {
-		t.Fatalf("second click on the same map cell digs: %d", g.digs)
-	}
-}
-
-func TestWorldMapDrawsTheSameCellsAsTheCard(t *testing.T) {
+func TestWorldMapKeepsEveryCardApart(t *testing.T) {
+	// the real mine: x and y are places, neighbours differ by one
 	st := baseState()
-	st.Game.Cards[0].Cells[0] = &OpenCell{Kind: "emerald", UID: 7}
+	st.Game.Cards = []PublicCard{card(1, 0, 0, 7), card(2, 1, 0, 6), card(3, 0, 1, 6), card(4, 1, 1, 6)}
 	m := mouseModel(t, digOK(), Options{}, st)
-	if !strings.Contains(m.worldMap(30), glyphs["emerald"].ch) {
-		t.Fatal("a dug cell shows its glyph on the map, like on the card")
+	if m.hit.vw != 4 || m.hit.vh != 4 {
+		t.Fatalf("2x2 places fit in the minimum window: %dx%d", m.hit.vw, m.hit.vh)
+	}
+	v := m.worldMap(60)
+	for _, id := range []string{"1", "2", "3", "4"} {
+		if !strings.Contains(v, id+" ") {
+			t.Errorf("card %s missing:\n%s", id, v)
+		}
 	}
 }

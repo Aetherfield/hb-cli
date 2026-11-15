@@ -63,7 +63,7 @@ func (m *Model) View() string {
 	const worldW = 34
 	switch {
 	case w >= cardW+meW+worldW:
-		world := panel.Render(m.worldMap((w - cardW - meW - panel.GetHorizontalFrameSize()) / 3))
+		world := panel.Render(m.worldMap(w - cardW - meW - panel.GetHorizontalFrameSize()))
 		m.placeHits(hy, 0, lipgloss.Width(world))
 		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, world, cardView, me) + "\n")
 	case w >= cardW+meW:
@@ -333,7 +333,7 @@ func (m *Model) placeHits(top, worldX, cardX int) {
 	if worldX >= 0 && m.hit.vw > 0 {
 		m.hit.world = true
 		m.hit.wx, m.hit.wy = worldX+fx, top+fy+1 // under the map's title line
-		m.hit.ww, m.hit.wh = m.hit.vw*3, m.hit.vh
+		m.hit.ww, m.hit.wh = m.hit.vw*tileCols, m.hit.vh*tileRows
 	}
 }
 
@@ -558,7 +558,7 @@ func (m *Model) helpView() string {
 	b.WriteString("  n / N         （建议开着时）光标跳到下一个 / 上一个零风险的格子；只移动光标，不会挖\n")
 	b.WriteString("  J             开关「挖完自动把光标跳到最近的零风险格」；同样只移动光标\n\n")
 	b.WriteString(bold.Render("鼠标") + "  点一格：把光标放过去；拖动是瞄准，松手不会挖；在光标已经停着的那一格上再点一下才挖（或按回车）\n")
-	b.WriteString("       矿图和卡是同一块板：点矿图里任何一格＝选中它（并切到那张卡），再点一次才挖；在矿图上拖动：平移；滚轮：上下移。想复制文字就按住 Shift 再选（或启动时加 --no-mouse）\n\n")
+	b.WriteString("       矿图一块是一张卡（颜色＝群系，条＝挖了多少，亮的是你在的那张）：点一块就去那张卡；在矿图上拖动：平移；滚轮：上下移。想复制文字就按住 Shift 再选（或启动时加 --no-mouse）\n\n")
 	b.WriteString(bold.Render("图标") + "  像素图标要真彩色终端；想用 Minecraft 原版贴图：运行 hb assets fetch（现场从 Mojang 官方取，不随 hb 分发）\n\n")
 	b.WriteString(bold.Render("格子") + "\n  ")
 	for _, k := range []Kind{"emerald", "diamond", "apple", "totem", "tnt", "pearl", "eye", "shield", "spyglass", "crystal", "coal", "stick", "map", "potion", "key", "vault", "lava", "cobweb", "spawner", "minecart", "ender"} {

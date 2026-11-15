@@ -1,6 +1,8 @@
 package kddb
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -67,7 +69,7 @@ func (h hitMap) worldCellAt(sx, sy int) (gx, gy int, ok bool) {
 	if !h.inWorld(sx, sy) {
 		return 0, 0, false
 	}
-	return h.minX + (sx-h.wx)/3, h.minY + (sy - h.wy), true
+	return h.minX + (sx-h.wx)/tileCols, h.minY + (sy-h.wy)/tileRows, true
 }
 
 // dragState is a button held down.
@@ -116,7 +118,7 @@ func (m *Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	case ev.Action == tea.MouseActionMotion && m.drag.on:
 		if m.drag.world {
-			dx, dy := (ev.X-m.drag.sx)/3, ev.Y-m.drag.sy
+			dx, dy := (ev.X-m.drag.sx)/tileCols, (ev.Y-m.drag.sy)/tileRows
 			if dx != 0 || dy != 0 {
 				m.drag.moved = true
 				m.world.panned = true
@@ -146,9 +148,8 @@ func (m *Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// clickWorld is a click on a cell of the map: it works like a click on the
-// card's own grid. The first click goes to that cell (and to its card); a click
-// on the cell the cursor is already on digs it.
+// clickWorld goes to the card whose tile was clicked. Digging is done on the
+// card itself, so a click on the map never digs.
 func (m *Model) clickWorld(sx, sy int) (tea.Model, tea.Cmd) {
 	gx, gy, ok := m.hit.worldCellAt(sx, sy)
 	if !ok {
@@ -158,13 +159,8 @@ func (m *Model) clickWorld(sx, sy int) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	idx := (gy-card.Y)*card.Size + (gx - card.X)
-	if cur := m.current(); cur != nil && cur.ID == card.ID && idx == m.cur {
-		return m.act(cur)
-	}
 	m.selectCard(card.ID)
-	m.cur = idx
 	m.world.centred, m.world.panned = card.ID, true // it was clicked where it is: leave the window be
-	m.notice = "再点一次这格才挖（也可以按 Enter）；拖动地图是平移。"
+	m.notice = fmt.Sprintf("到了卡 #%d；在右边那张卡上点格子瞄准，再点一次才挖。", card.ID)
 	return m, nil
 }
