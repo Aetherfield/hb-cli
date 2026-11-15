@@ -1,0 +1,6 @@
+hb.exe
+/dist/
+*.test
+.env
+*.har
+/hb

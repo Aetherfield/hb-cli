@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 14px system-ui, sans-serif; width: 260px; margin: 12px; }
+  input { width: 100%; box-sizing: border-box; font-size: 20px; letter-spacing: 6px; text-align: center; padding: 6px; }
+  button { width: 100%; margin-top: 8px; padding: 8px; font-size: 14px; }
+  #msg { margin-top: 8px; min-height: 2em; white-space: pre-wrap; }
+  .ok { color: #1a7f37; } .err { color: #cf222e; }
+</style>
+</head>
+<body>
+  <div>在终端运行 <code>hb login</code> 选「扩展」，输入终端里显示的 6 位配对码：</div>
+  <input id="code" inputmode="numeric" maxlength="6" autofocus>
+  <button id="send">发送会话到 hb</button>
+  <div id="msg"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
