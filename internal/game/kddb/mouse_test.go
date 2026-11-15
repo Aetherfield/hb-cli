@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -374,5 +375,63 @@ func TestAutoJumpGoesToTheNextCardWhenThisOneHasNone(t *testing.T) {
 	m.jumpNearestSafe()
 	if m.current().ID != 2 || m.cur != 6 || !strings.Contains(m.notice, "卡 #2") {
 		t.Fatalf("card=%d cur=%d %q", m.current().ID, m.cur, m.notice)
+	}
+}
+
+func TestNavigationStillWorksWhileARequestIsOut(t *testing.T) {
+	g := digOK()
+	m := mouseModel(t, g, Options{}, bigWorld())
+	m.busy = true
+	// the map: a click goes to the card
+	sx := m.hit.wx + (1-m.hit.minX)*tileCols + 1
+	sy := m.hit.wy + (0-m.hit.minY)*tileRows
+	click(t, m, sx, sy)
+	if m.current().ID != 2 {
+		t.Fatalf("a map click must work while busy: card %d", m.current().ID)
+	}
+	// keys: move and change card
+	run(t, m, key(m, "l"))
+	if m.cur != 1 {
+		t.Fatalf("moving works while busy: %d", m.cur)
+	}
+	run(t, m, key(m, "["))
+	if m.current().ID != 1 {
+		t.Fatalf("changing card works while busy: %d", m.current().ID)
+	}
+	// but nothing that acts
+	m.cur = 5
+	run(t, m, key(m, "enter"))
+	run(t, m, key(m, "c"))
+	click(t, m, m.hit.gx+5%3*3+1, m.hit.gy+5/3)
+	click(t, m, m.hit.gx+5%3*3+1, m.hit.gy+5/3)
+	if g.digs != 0 || m.mode != modeDig {
+		t.Fatalf("digs=%d mode=%v: acting must wait for the answer", g.digs, m.mode)
+	}
+	if !strings.Contains(m.notice, "还没回来") {
+		t.Fatalf("it should say why: %q", m.notice)
+	}
+}
+
+func TestCooldownRedrawsTenTimesASecond(t *testing.T) {
+	m := mouseModel(t, digOK(), Options{}, baseState())
+	if d := m.tickDelay(); d != time.Second {
+		t.Fatalf("idle: %v", d)
+	}
+	m.cool = time.Now().Add(2 * time.Second)
+	if d := m.tickDelay(); d != 100*time.Millisecond {
+		t.Fatalf("cooling: %v", d)
+	}
+}
+
+func TestAutoJumpDoesNotYankACursorTheyMovedAway(t *testing.T) {
+	cell := json.RawMessage(`{"type":"cell","seq":2,"cardId":1,"index":0,"cell":{"kind":"emerald","uid":7,"name":"me","at":1},"left":990,"text":"ok"}`)
+	g := &fakeGame{digAnswer: DigAnswer{OK: true, Result: &DigResult{Text: "ok"}, Me: Me{Chances: 4, Status: "playing"}, Update: cell}}
+	m := newModel(t, g, nil, Options{Hints: true, Render: "glyph"}, hintState())
+	m.cur = 0
+	cmd := key(m, "enter") // the dig is out
+	run(t, m, key(m, "l")) // they move on while it is
+	run(t, m, cmd)
+	if m.cur != 1 {
+		t.Fatalf("the cursor stays where they put it: %d", m.cur)
 	}
 }

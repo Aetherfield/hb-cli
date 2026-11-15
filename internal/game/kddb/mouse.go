@@ -87,7 +87,7 @@ type dragState struct {
 }
 
 func (m *Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	if !m.loaded || m.busy || (m.mode != modeDig && m.mode != modeAim) {
+	if !m.loaded || (m.mode != modeDig && m.mode != modeAim) {
 		return m, nil
 	}
 	ev := tea.MouseEvent(msg)

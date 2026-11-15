@@ -144,6 +144,7 @@ type Model struct {
 	hintsOn  bool // the advisor's marks are shown (only if opts.Hints)
 	adv      map[int]adviceCache
 	pending  *HintRecord // the guess for the dig that is in flight
+	dug      [2]int      // the card and cell of the dig in flight
 	autoJump bool        // after a dig, the cursor moves to the nearest cell with no danger (it never digs)
 
 	hit     hitMap    // where the clickable things are on the screen, as of the last View
@@ -163,7 +164,7 @@ func NewModel(ctx context.Context, g Game, submit SubmitFunc, opts Options) *Mod
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.load(), m.startLive(), tick(), m.waitLive())
+	return tea.Batch(m.load(), m.startLive(), m.tick(), m.waitLive())
 }
 
 func (m *Model) load() tea.Cmd {
@@ -222,8 +223,17 @@ func (m *Model) waitLive() tea.Cmd {
 	}
 }
 
-func tick() tea.Cmd {
-	return tea.Tick(time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+// tick schedules the next redraw: every second, but ten times a second while
+// the pickaxe is cooling down, so its bar and countdown run smoothly.
+func (m *Model) tick() tea.Cmd {
+	return tea.Tick(m.tickDelay(), func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+func (m *Model) tickDelay() time.Duration {
+	if time.Until(m.cool) > 0 || time.Until(m.creeper) > 0 {
+		return 100 * time.Millisecond
+	}
+	return time.Second
 }
 
 func (m *Model) cards() []PublicCard {
@@ -278,7 +288,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tickMsg:
-		return m, tea.Batch(tick(), m.maybeAutoClaim())
+		return m, tea.Batch(m.tick(), m.maybeAutoClaim())
 	case stateMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -328,7 +338,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.claimNow = true
 			m.notice += "  （机会用完了，按 c 领取）"
 		}
-		m.jumpNearestSafe()
+		if cur := m.current(); cur != nil && cur.ID == m.dug[0] && m.cur == m.dug[1] {
+			m.jumpNearestSafe() // only if the cursor is still where the dig was: not if they moved on
+		}
 	case useMsg:
 		m.busy = false
 		if msg.err != nil {
@@ -522,8 +534,17 @@ func (m *Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.notice = "显示：" + m.zoomName()
 		return m, nil
 	}
-	if !m.loaded || m.busy {
+	if !m.loaded {
 		return m, nil
+	}
+	// while a request is out, moving around and changing card are still fine;
+	// anything that acts waits for the answer
+	if m.busy {
+		switch s {
+		case "left", "h", "right", "l", "up", "k", "down", "j", "n", "N", "[", "shift+tab", "pgup", "]", "tab", "pgdown":
+		default:
+			return m, nil
+		}
 	}
 	c := m.current()
 	switch s {
@@ -570,6 +591,10 @@ func (m *Model) act(c *PublicCard) (tea.Model, tea.Cmd) {
 	if c == nil || m.st.Game.Over || m.st.Me.Status == "claimed" {
 		return m, nil
 	}
+	if m.busy {
+		m.notice = "上一个请求还没回来，等一下。"
+		return m, nil
+	}
 	if m.mode == modeAim && m.aim != nil {
 		d := *m.aim
 		if why := aimProblem(d, c, m.cur, m.st.Game.Rules); why != "" {
@@ -598,6 +623,7 @@ func (m *Model) act(c *PublicCard) (tea.Model, tea.Cmd) {
 	m.notePrediction(*c, m.cur)
 	m.busy = true
 	cardID, idx := c.ID, m.cur
+	m.dug = [2]int{cardID, idx}
 	return m, func() tea.Msg {
 		a, err := m.game.Dig(m.ctx, cardID, idx)
 		return digMsg{a, err}
