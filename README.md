@@ -93,6 +93,24 @@ hb unsnow received              # 我已到账的红包
 
 全局选项：`--json`（输出 JSON，键名始终是英文，不含密钥）、`--profile <名>`。`hb <命令> --help` 有每个命令的详细说明。
 
+## Tab 补全
+
+niubash（`niu`）：把下面这段加到 `~/.niubashrc`。niubash 的 Tab 目前不执行 bash 的 `complete -F` 函数，所以不能用
+bash 的补全脚本，`hb completion niu` 输出的是 niubash 自己的 compdef 协议脚本；它也读不了 `source <(...)`，所以用 `eval`。
+
+```sh
+if command -v hb >/dev/null 2>&1; then
+  __hb_c=$(hb completion niu 2>/dev/null)
+  case "$__hb_c" in "# hb "*) eval "$__hb_c" ;; esac
+  unset __hb_c
+fi
+```
+
+之后新开的 niubash 里，`hb <Tab>` 补命令，`hb login <Tab>` 补站点名，`--method`、`--mode`、`--render`、`--browser` 补取值。
+**口令、链接和红包编号不会被补全**，补全不该帮人猜口令（但 niubash 在 hb 没给候选时会退回成文件名补全，这一层 hb 管不到）。
+
+其他 shell：`hb completion bash|zsh|fish|powershell`，用法见各自的 `--help`。
+
 ## 数据和安全
 
 - 登录会话存进系统钥匙串（Windows 凭据管理器、macOS 钥匙串、Linux 的 Secret Service）。没有可用钥匙串时

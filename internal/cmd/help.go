@@ -97,7 +97,7 @@ var shorts = map[string]string{
 	"hb unsnow sent":     "我发出的红包",
 	"hb unsnow received": "我已到账的红包",
 	"hb help":            "查看某个命令的帮助",
-	"hb completion":      "生成命令补全脚本（bash、zsh、fish、powershell）",
+	"hb completion":      "生成命令补全脚本（niu、bash、zsh、fish 等）",
 }
 
 // groups are the sections of the top-level help, in order.
@@ -122,6 +122,11 @@ func polish(root *cobra.Command) {
 	for _, g := range groups {
 		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
 	}
+	if c, _, err := root.Find([]string{"completion"}); err == nil && c.Name() == "completion" {
+		c.Long = "生成命令补全脚本，让 Tab 能补全 hb 的命令、选项和站点名。\n用哪个 shell 就看对应子命令的说明；niubash 用 niu。"
+		c.AddCommand(newCompletionNiuCmd())
+	}
+	addCompletions(root)
 	for _, c := range root.Commands() {
 		c.GroupID = groupOf[c.Name()]
 	}
