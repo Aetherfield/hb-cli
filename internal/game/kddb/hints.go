@@ -59,6 +59,30 @@ func (m *Model) hintSafe(c PublicCard, idx int) bool {
 	return m.adviceOf(c).IsSafe(idx)
 }
 
+// hintDanger: this undug cell certainly holds a danger, by the game's own rules.
+func (m *Model) hintDanger(c PublicCard, idx int) bool {
+	if !m.hintsActive() || cellAt(c, idx) != nil || c.Fixed[fmt.Sprint(idx)] != "" {
+		return false
+	}
+	return m.adviceOf(c).IsDanger(idx)
+}
+
+// dangerCells are the undug cells of a card that certainly hold a danger.
+func dangerCells(c PublicCard, a Advice) []string {
+	var idx []int
+	for i := range a.Risk {
+		if a.IsDanger(i) && cellAt(c, i) == nil && c.Fixed[fmt.Sprint(i)] == "" {
+			idx = append(idx, i)
+		}
+	}
+	sort.Ints(idx)
+	var out []string
+	for _, i := range idx {
+		out = append(out, coord(c.Size, i))
+	}
+	return out
+}
+
 // coord writes a cell as "row,column", the way the line mode's d command takes it.
 func coord(size, idx int) string { return fmt.Sprintf("%d,%d", idx/size+1, idx%size+1) }
 
@@ -93,6 +117,9 @@ func (m *Model) hintPanel() string {
 		return b.String()
 	}
 	fmt.Fprintf(&b, "%s\n", dim.Render(fmt.Sprintf("还藏着 %d 个危险在 %d 格里", a.Dangers, a.Unknown)))
+	if bad := dangerCells(*c, a); len(bad) > 0 {
+		b.WriteString(danger.Render("一定危险 ") + strings.Join(bad, " ") + "\n")
+	}
 	var safe []string
 	for _, i := range a.Safe {
 		if cellAt(*c, i) == nil {

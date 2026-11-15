@@ -61,6 +61,12 @@ func (a Advice) Lowest(n int) []Pick {
 	return ps
 }
 
+// IsDanger reports whether a cell certainly holds a danger.
+func (a Advice) IsDanger(idx int) bool {
+	r, ok := a.Risk[idx]
+	return ok && r >= 1
+}
+
 // IsSafe reports whether a cell is known to hold no danger.
 func (a Advice) IsSafe(idx int) bool {
 	for _, s := range a.Safe {

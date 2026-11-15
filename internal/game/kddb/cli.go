@@ -348,7 +348,7 @@ func symbolOf(k Kind) string {
 // markHelp explains the marker column.
 var markHelp = []struct{ m, text string }{
 	{"*", "你挖的"}, {"?", "只有你知道（望远镜/藏宝图）"}, {"0", "火把 绿"}, {"1", "火把 黄"},
-	{"2", "火把 橙"}, {"3", "火把 红"}, {"+", "零风险（--hints）"},
+	{"2", "火把 橙"}, {"3", "火把 红"}, {"+", "零风险（--hints）"}, {"x", "一定危险（--hints）"},
 }
 
 // legendFull is the whole legend, for the `l` command.
@@ -440,6 +440,8 @@ func (s *Shell) cellText(c PublicCard, idx int, last bool) string {
 			ch, mark, st, markSt, shown = symbolOf(k), "?", peek, peek, k
 		} else if s.mapHint != nil && s.mapHint.IsSafe(idx) { // the advisor: cannot hold a danger
 			mark, markSt = "+", good.Bold(true)
+		} else if s.mapHint != nil && s.mapHint.IsDanger(idx) { // ... and one that certainly holds one
+			mark, markSt = "x", danger.Bold(true)
 		}
 	}
 	if t, ok := c.torchAt(idx); ok {
@@ -793,6 +795,9 @@ func (s *Shell) cmdHint() error {
 		if cellAt(*c, i) == nil {
 			safe = append(safe, coord(c.Size, i))
 		}
+	}
+	if bad := dangerCells(*c, a); len(bad) > 0 {
+		s.say("%s %s", danger.Render("一定危险"), strings.Join(bad, " "))
 	}
 	if len(safe) > 0 {
 		s.say("%s %s", good.Render("零风险"), strings.Join(safe, " "))

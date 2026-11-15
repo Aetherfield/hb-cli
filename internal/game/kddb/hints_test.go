@@ -171,3 +171,52 @@ func TestTUINeverDigsOnItsOwnWithHintsOn(t *testing.T) {
 		t.Fatalf("the advisor and the screen must never dig: %d", g.digs)
 	}
 }
+
+// one cell left undug and one danger left: that cell is certainly the danger
+func lastDangerState() State {
+	st := baseState()
+	c := card(1, 0, 0, 3)
+	c.Left = map[Kind]int{"tnt": 1}
+	for i := range c.Cells {
+		if i != 5 {
+			c.Cells[i] = &OpenCell{Kind: "emerald", UID: 9}
+		}
+	}
+	st.Game.Cards = []PublicCard{c}
+	return st
+}
+
+func TestTheAdvisorMarksCellsThatAreCertainlyDangers(t *testing.T) {
+	m := newModel(t, &fakeGame{}, nil, Options{Hints: true, Render: "glyph"}, lastDangerState())
+	m.width = 150
+	c := m.st.Game.Cards[0]
+	if !m.hintDanger(c, 5) || m.hintSafe(c, 5) || m.hintDanger(c, 0) {
+		t.Fatal("cell 5 is the danger, and only it")
+	}
+	v := m.View()
+	if !strings.Contains(v, "✗") || !strings.Contains(v, "一定危险") || !strings.Contains(v, "2,3") {
+		t.Fatalf("the screen must mark it and list it:\n%s", v)
+	}
+	// the jump never goes to it
+	run(t, m, key(m, "n"))
+	if m.cur == 5 {
+		t.Fatal("n must not jump to a certain danger")
+	}
+	// hidden with H, and absent without --hints
+	run(t, m, key(m, "H"))
+	if v := m.View(); strings.Contains(v, "✗") || strings.Contains(v, "一定危险") {
+		t.Fatal("H hides it")
+	}
+	off := newModel(t, &fakeGame{}, nil, Options{Render: "glyph"}, lastDangerState())
+	if off.hintDanger(off.st.Game.Cards[0], 5) || strings.Contains(off.View(), "✗") {
+		t.Fatal("no marks without --hints")
+	}
+}
+
+func TestLineModeMapMarksCertainDangers(t *testing.T) {
+	sh, out := newShell(t, recorder(lastDangerState()), "")
+	sh.Hints = true
+	if _, err := sh.Exec("hint"); err != nil || !strings.Contains(out.String(), "一定危险") || !strings.Contains(out.String(), "2,3") {
+		t.Fatalf("hint: %q (%v)", out.String(), err)
+	}
+}

@@ -304,6 +304,15 @@ func (m *Model) tile(c PublicCard, idx, i int) grid {
 				g[y][0], g[y][1], g[y][w-1], g[y][w-2] = green, green, green, green
 			}
 		}
+		if m.hintDanger(c, idx) { // the advisor: a red frame on a cell that certainly holds a danger
+			red := hexColor("#e74c3c")
+			for x := 0; x < w; x++ {
+				g[0][x], g[1][x], g[w-1][x] = red, red, red
+			}
+			for y := 0; y < w; y++ {
+				g[y][0], g[y][1], g[y][w-1], g[y][w-2] = red, red, red, red
+			}
+		}
 		if k, ok := m.peekAt(c.ID, idx); ok { // only you know this one
 			p := hexColor("#7c3aed")
 			for y := 1; y < w-3; y++ {
