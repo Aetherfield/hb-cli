@@ -67,7 +67,7 @@ func (h hitMap) worldCellAt(sx, sy int) (gx, gy int, ok bool) {
 	if !h.inWorld(sx, sy) {
 		return 0, 0, false
 	}
-	return h.minX + (sx-h.wx)/2, h.minY + (sy - h.wy), true
+	return h.minX + (sx-h.wx)/3, h.minY + (sy - h.wy), true
 }
 
 // dragState is a button held down.
@@ -116,7 +116,7 @@ func (m *Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 	case ev.Action == tea.MouseActionMotion && m.drag.on:
 		if m.drag.world {
-			dx, dy := (ev.X-m.drag.sx)/2, ev.Y-m.drag.sy
+			dx, dy := (ev.X-m.drag.sx)/3, ev.Y-m.drag.sy
 			if dx != 0 || dy != 0 {
 				m.drag.moved = true
 				m.world.panned = true
@@ -136,7 +136,7 @@ func (m *Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.drag = dragState{}
 		switch {
 		case d.world && !d.moved:
-			m.clickWorld(ev.X, ev.Y)
+			return m.clickWorld(ev.X, ev.Y)
 		case !d.world && d.armed && !d.moved && c != nil:
 			if idx, ok := m.hit.cellAt(ev.X, ev.Y); ok && idx == m.cur {
 				return m.act(c)
@@ -146,18 +146,25 @@ func (m *Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// clickWorld goes to the card under the click, and to the cell of it that was clicked.
-func (m *Model) clickWorld(sx, sy int) {
+// clickWorld is a click on a cell of the map: it works like a click on the
+// card's own grid. The first click goes to that cell (and to its card); a click
+// on the cell the cursor is already on digs it.
+func (m *Model) clickWorld(sx, sy int) (tea.Model, tea.Cmd) {
 	gx, gy, ok := m.hit.worldCellAt(sx, sy)
 	if !ok {
-		return
+		return m, nil
 	}
 	card, ok := cardAtCell(m.cards(), gx, gy)
 	if !ok {
-		return
+		return m, nil
+	}
+	idx := (gy-card.Y)*card.Size + (gx - card.X)
+	if cur := m.current(); cur != nil && cur.ID == card.ID && idx == m.cur {
+		return m.act(cur)
 	}
 	m.selectCard(card.ID)
-	m.cur = (gy-card.Y)*card.Size + (gx - card.X)
+	m.cur = idx
 	m.world.centred, m.world.panned = card.ID, true // it was clicked where it is: leave the window be
-	m.notice = ""
+	m.notice = "再点一次这格才挖（也可以按 Enter）；拖动地图是平移。"
+	return m, nil
 }
