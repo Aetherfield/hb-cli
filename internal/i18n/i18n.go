@@ -28,9 +28,13 @@ var catalog = map[string]map[Lang]string{
 		ZH: "hb — LINUX DO 红包命令行工具",
 		EN: "hb — red-packet CLI for LINUX DO",
 	},
+	"root.long": {
+		ZH: "查红包、玩矿洞夺宝。领取和人机验证永远由你自己来，hb 不会替你循环、轮询或重试。",
+		EN: "Look up red packets, play 矿洞夺宝. Claiming and human checks are always yours; hb never loops, polls or retries for you.",
+	},
 	"login.short": {
-		ZH: "用独立浏览器登录某个站点并保存会话",
-		EN: "Log in to a site in a dedicated browser and save the session",
+		ZH: "登录某个站点并保存会话",
+		EN: "Log in to a site and save the session",
 	},
 	"login.opening": {
 		ZH: "正在打开浏览器登录 %s ...",
@@ -130,6 +134,11 @@ var catalog = map[string]map[Lang]string{
 		ZH: "检查配置、网络和时钟，排查问题",
 		EN: "Check config, connectivity and clock to diagnose problems",
 	},
+	"doctor.h.config":   {ZH: "配置目录", EN: "Config directory"},
+	"doctor.h.browsers": {ZH: "浏览器", EN: "Browsers"},
+	"doctor.h.sites":    {ZH: "站点", EN: "Sites"},
+	"doctor.down":       {ZH: "不可达", EN: "unreachable"},
+	"doctor.nobrowser":  {ZH: "没找到浏览器（登录的 ext、clone、clean 方式要用）", EN: "none found (the ext, clone and clean login methods need one)"},
 	"doctor.config": {
 		ZH: "配置目录: %s",
 		EN: "config dir: %s",

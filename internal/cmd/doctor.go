@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,7 @@ import (
 	"hb/internal/httpx"
 	"hb/internal/i18n"
 	"hb/internal/store"
+	"hb/internal/ui"
 )
 
 type doctorTarget struct {
@@ -77,23 +79,38 @@ func newDoctorCmd() *cobra.Command {
 				enc.SetIndent("", "  ")
 				return enc.Encode(map[string]any{"home": home, "browsers": browsers, "targets": results})
 			}
-			fmt.Fprintln(out, i18n.T("doctor.config", home))
+			u := ui.For(out)
+			fmt.Fprintln(out, u.Section(i18n.T("doctor.h.config")))
+			fmt.Fprintln(out, "  "+home)
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, u.Section(i18n.T("doctor.h.browsers")))
+			if len(browsers) == 0 {
+				fmt.Fprintln(out, "  "+u.Dim(i18n.T("doctor.nobrowser")))
+			}
 			for _, b := range browsers {
 				tag := ""
 				if b.Default {
-					tag = i18n.T("login.default.tag")
+					tag = " " + u.Good(strings.TrimSpace(i18n.T("login.default.tag")))
 				}
-				fmt.Fprintf(out, "%-18s %-8s %s%s\n", b.Name, b.Family, b.Exe, tag)
+				fmt.Fprintf(out, "  %s %s %s%s\n", ui.Pad(b.Name, 18), u.Dim(ui.Pad(b.Family, 8)), u.Dim(b.Exe), tag)
 			}
+			fmt.Fprintln(out)
+			fmt.Fprintln(out, u.Section(i18n.T("doctor.h.sites")))
 			for _, r := range results {
 				if !r.OK {
-					fmt.Fprintln(out, i18n.T("doctor.reach.fail", r.Name, r.Error))
+					fmt.Fprintf(out, "  %s %s %s\n", u.Mark(false), ui.Pad(r.Name, 24), u.Bad(i18n.T("doctor.down")+": "+r.Error))
 					continue
 				}
-				fmt.Fprintln(out, i18n.T("doctor.reach.ok", r.Name, r.LatencyMS, r.Status))
+				latency := fmt.Sprintf("%d ms", r.LatencyMS)
+				if r.LatencyMS > 1500 {
+					latency = u.Warn(latency)
+				} else {
+					latency = u.Dim(latency)
+				}
+				fmt.Fprintf(out, "  %s %s %s %s\n", u.Mark(true), ui.Pad(r.Name, 24), latency, u.Dim(fmt.Sprintf("HTTP %d", r.Status)))
 				if r.SkewSec > 60 || r.SkewSec < -60 {
-					fmt.Fprintln(out, i18n.T("doctor.skew", r.Name, time.Duration(r.SkewSec*float64(time.Second))))
-					fmt.Fprintln(out, i18n.T("doctor.skew.warn"))
+					fmt.Fprintf(out, "      %s\n", u.Warn(i18n.T("doctor.skew", r.Name, time.Duration(r.SkewSec*float64(time.Second)))))
+					fmt.Fprintf(out, "      %s\n", u.Warn(i18n.T("doctor.skew.warn")))
 				}
 			}
 			return nil

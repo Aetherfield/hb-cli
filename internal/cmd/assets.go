@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"hb/internal/assets"
+	"hb/internal/ui"
 )
 
 func wikiBytes() int64 {
@@ -41,7 +42,8 @@ func newAssetsCmd() *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			if len(assets.Check(dir, assets.AllFiles())) == 0 {
-				fmt.Fprintln(out, "素材已齐：", dir)
+				u := ui.For(out)
+				fmt.Fprintln(out, u.Mark(true)+" 素材已齐 "+u.Dim(dir))
 				return nil
 			}
 			if !yes {
@@ -75,11 +77,13 @@ func newAssetsCmd() *cobra.Command {
 			}
 			bad := assets.Check(dir, assets.AllFiles())
 			if len(bad) == 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "素材齐全，%d 个文件都对：%s\n", len(assets.AllFiles()), dir)
+				u := ui.For(cmd.OutOrStdout())
+				fmt.Fprintf(cmd.OutOrStdout(), "%s 素材齐全，%d 个文件都对 %s\n", u.Mark(true), len(assets.AllFiles()), u.Dim(dir))
 				return nil
 			}
+			u := ui.For(cmd.OutOrStdout())
 			for _, f := range bad {
-				fmt.Fprintln(cmd.OutOrStdout(), "缺或不对：", f.Path)
+				fmt.Fprintln(cmd.OutOrStdout(), u.Mark(false)+" "+u.Bad("缺或不对")+" "+f.Path)
 			}
 			return fmt.Errorf("缺 %d 个，运行 hb assets fetch", len(bad))
 		},
@@ -96,7 +100,8 @@ func newAssetsCmd() *cobra.Command {
 			if err := assets.Remove(dir); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "已删除", dir)
+			u := ui.For(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), u.Mark(true)+" 已删除 "+u.Dim(dir))
 			return nil
 		},
 	}

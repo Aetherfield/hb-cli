@@ -13,6 +13,7 @@ import (
 	"hb/internal/auth"
 	"hb/internal/provider"
 	"hb/internal/provider/unsnow"
+	"hb/internal/ui"
 )
 
 // hb unsnow: hb.unsnow.org through its official read-only CLI API
@@ -60,7 +61,7 @@ func newUnsnowCmd() *cobra.Command {
 			if flagJSON {
 				return writeJSON(cmd.OutOrStdout(), pk)
 			}
-			writePacket(cmd.OutOrStdout(), pk)
+			writePacket(cmd.OutOrStdout(), ui.For(cmd.OutOrStdout()), pk)
 			return nil
 		},
 	}
@@ -89,19 +90,20 @@ func newUnsnowCmd() *cobra.Command {
 				fmt.Fprintln(out, "广场上现在没有红包")
 				return nil
 			}
+			st := ui.For(out)
 			for _, pk := range pl.List {
-				mark, note := "✗", "领不了"
+				note := st.Dim("领不了")
 				if pk.CanClaim {
-					mark, note = "✓", "可以领"
+					note = st.Good("可以领")
 				} else if pk.Reason != nil && *pk.Reason != "" {
-					note = *pk.Reason
+					note = st.Dim(*pk.Reason)
 				} else if !pk.Available {
-					note = "已结束"
+					note = st.Dim("已结束")
 				}
-				fmt.Fprintf(out, "%s %s · %s · %s · 总额 %s · %s\n    %s\n",
-					mark, pk.Creator.Username, typeName(pk.Type), progressText(pk.Progress), ldc(pk.TotalAmount), note, pk.Link)
+				fmt.Fprintf(out, "%s %s %s  %s\n    %s\n", st.Mark(pk.CanClaim), st.Accent(pk.Creator.Username),
+					st.Dim(typeName(pk.Type)+" · "+progressText(pk.Progress)+" · 总额 "+ldc(pk.TotalAmount)), note, st.Link(pk.Link))
 			}
-			moreLine(out, page, len(pl.List), pl.Total, pl.HasMore)
+			moreLine(out, st, page, len(pl.List), pl.Total, pl.HasMore)
 			return nil
 		},
 	}
@@ -128,15 +130,22 @@ func newUnsnowCmd() *cobra.Command {
 			if m.User.TrustLevel != nil {
 				level = fmt.Sprint(*m.User.TrustLevel)
 			}
-			fmt.Fprintf(out, "%s（LINUX DO %d，信任等级 %s）· 权限 %s\n", m.User.Username, m.User.LinuxDoID, level, m.Scope)
+			st := ui.For(out)
+			fmt.Fprintf(out, "%s %s\n", st.Accent(m.User.Username), st.Dim(fmt.Sprintf("LINUX DO %d · 信任等级 %s · 权限 %s", m.User.LinuxDoID, level, m.Scope)))
 			cs := m.ClaimSecurity
-			fmt.Fprintf(out, "口令连续查错 %d 次（第 %d 次要网页验证）\n", cs.ConsecutiveMisses, cs.Threshold)
+			misses := fmt.Sprintf("口令连续查错 %d 次（第 %d 次要网页验证）", cs.ConsecutiveMisses, cs.Threshold)
+			if cs.ConsecutiveMisses > 0 {
+				misses = st.Warn(misses)
+			} else {
+				misses = st.Dim(misses)
+			}
+			fmt.Fprintln(out, misses)
 			if cs.VerificationRequired {
 				url := m.VerificationURL
 				if url == "" {
 					url = unsnow.VerificationURL
 				}
-				fmt.Fprintf(out, "需要先完成查询验证：用这个账号在浏览器打开 %s\n", url)
+				fmt.Fprintf(out, "%s 需要先完成查询验证：用这个账号在浏览器打开 %s\n", st.Mark(false), st.Link(url))
 			}
 			return nil
 		},
@@ -164,12 +173,14 @@ func newUnsnowCmd() *cobra.Command {
 				fmt.Fprintln(out, "还没有发出过红包")
 				return nil
 			}
+			st := ui.For(out)
 			for _, r := range h.List {
-				fmt.Fprintf(out, "%s · %s · %s · 已到账 %s / 总额 %s · %d/%d 份 · %s\n    %s\n",
-					when(r.CreatedAt), typeName(r.Type), statusName(r.Status), ldc(r.SentAmount), ldc(r.TotalAmount),
-					r.SentCount, r.Count, wishText(r.Wish), r.Link)
+				fmt.Fprintf(out, "%s %s %s  已到账 %s / 总额 %s  %s\n    %s %s\n",
+					st.Dim(when(r.CreatedAt)), st.Accent(typeName(r.Type)), st.Dim(statusName(r.Status)),
+					st.Good(ldc(r.SentAmount)), ldc(r.TotalAmount), st.Dim(fmt.Sprintf("%d/%d 份", r.SentCount, r.Count)),
+					st.Link(r.Link), st.Dim(wishText(r.Wish)))
 			}
-			moreLine(out, sentPage, len(h.List), h.Total, h.HasMore)
+			moreLine(out, st, sentPage, len(h.List), h.Total, h.HasMore)
 			return nil
 		},
 	}
@@ -195,11 +206,13 @@ func newUnsnowCmd() *cobra.Command {
 				fmt.Fprintln(out, "还没有到账的领取记录")
 				return nil
 			}
+			st := ui.For(out)
 			for _, r := range h.List {
-				fmt.Fprintf(out, "%s · %s · 来自 %s · %s · %s\n    %s\n",
-					when(r.ReceivedAt), ldc(r.ReceivedAmount), r.CreatorUsername, typeName(r.Type), wishText(r.Wish), r.Link)
+				fmt.Fprintf(out, "%s %s 来自 %s  %s\n    %s %s\n",
+					st.Dim(when(r.ReceivedAt)), st.Good(ldc(r.ReceivedAmount)), st.Accent(r.CreatorUsername), st.Dim(typeName(r.Type)),
+					st.Link(r.Link), st.Dim(wishText(r.Wish)))
 			}
-			moreLine(out, receivedPage, len(h.List), h.Total, h.HasMore)
+			moreLine(out, st, receivedPage, len(h.List), h.Total, h.HasMore)
 			return nil
 		},
 	}
@@ -241,43 +254,45 @@ func lookupHint(err error) error {
 	return err
 }
 
-func writePacket(out io.Writer, pk unsnow.Packet) {
-	name := pk.Creator.Username
-	fmt.Fprintf(out, "%s 的%s红包 · %s · 总额 %s · %s\n", name, typeName(pk.Type), progressText(pk.Progress), ldc(pk.TotalAmount), statusName(pk.Status))
+func writePacket(out io.Writer, u *ui.UI, pk unsnow.Packet) {
+	fmt.Fprintf(out, "%s %s\n", u.Title(pk.Creator.Username+" 的"+typeName(pk.Type)+"红包"),
+		u.Dim(progressText(pk.Progress)+" · 总额 "+ldc(pk.TotalAmount)+" · "+statusName(pk.Status)))
 	if pk.Wish != nil && *pk.Wish != "" {
-		fmt.Fprintf(out, "祝福：%s\n", *pk.Wish)
+		fmt.Fprintf(out, "%s %s\n", u.Dim("祝福"), *pk.Wish)
 	}
 	if len(pk.Levels) > 0 && len(pk.Levels) < 5 {
 		lv := make([]string, len(pk.Levels))
 		for i, l := range pk.Levels {
 			lv[i] = fmt.Sprint(l)
 		}
-		fmt.Fprintf(out, "信任等级限制：%s\n", strings.Join(lv, "/"))
+		fmt.Fprintf(out, "%s %s\n", u.Dim("信任等级限制"), strings.Join(lv, "/"))
 	}
 	if pk.MaxClaims24h != nil {
-		fmt.Fprintf(out, "最近 24 小时领过 %d 次的人不能再领\n", *pk.MaxClaims24h)
+		fmt.Fprintf(out, "%s 最近 24 小时领过 %d 次的人不能再领\n", u.Dim("次数限制"), *pk.MaxClaims24h)
 	}
 	if pk.ExpiresAt != nil {
-		fmt.Fprintf(out, "%s 过期\n", when(*pk.ExpiresAt))
+		fmt.Fprintf(out, "%s %s\n", u.Dim("过期"), when(*pk.ExpiresAt))
 	}
 	if pk.TextCodeLocked {
 		until := ""
 		if pk.TextCodeLockedUntil != nil {
 			until = "，" + when(*pk.TextCodeLockedUntil) + " 前"
 		}
-		fmt.Fprintf(out, "这个文字口令本轮你已经领过%s不能再领同口令的红包\n", until)
+		fmt.Fprintf(out, "%s 这个文字口令本轮你已经领过%s不能再领同口令的红包\n", u.Warn("!"), until)
 	}
+	fmt.Fprintln(out)
 	switch {
 	case pk.CanClaim:
-		fmt.Fprintln(out, "现在可以领（以领取时为准）→ 在浏览器里打开下面的链接，自己过人机验证并点领取：")
+		fmt.Fprintf(out, "%s %s\n", u.Mark(true), u.Good("现在可以领（以领取时为准）"))
+		fmt.Fprintln(out, u.Dim("在浏览器里打开下面的链接，自己过人机验证并点领取："))
 	case pk.Reason != nil && *pk.Reason != "":
-		fmt.Fprintf(out, "现在领不了：%s\n", *pk.Reason)
+		fmt.Fprintf(out, "%s %s\n", u.Mark(false), u.Bad("现在领不了："+*pk.Reason))
 	case !pk.Available:
-		fmt.Fprintln(out, "现在领不了：已结束")
+		fmt.Fprintf(out, "%s %s\n", u.Mark(false), u.Bad("现在领不了：已结束"))
 	default:
-		fmt.Fprintln(out, "现在领不了")
+		fmt.Fprintf(out, "%s %s\n", u.Mark(false), u.Bad("现在领不了"))
 	}
-	fmt.Fprintln(out, pk.Link)
+	fmt.Fprintln(out, u.Link(pk.Link))
 }
 
 func pageFlags(c *cobra.Command, p *unsnow.Page) {
@@ -285,9 +300,9 @@ func pageFlags(c *cobra.Command, p *unsnow.Page) {
 	c.Flags().IntVar(&p.Offset, "offset", 0, "从第几项开始（0–10000）")
 }
 
-func moreLine(out io.Writer, p unsnow.Page, shown, total int, more bool) {
+func moreLine(out io.Writer, u *ui.UI, p unsnow.Page, shown, total int, more bool) {
 	if more {
-		fmt.Fprintf(out, "共 %d 项，下一页：--offset %d\n", total, p.Offset+shown)
+		fmt.Fprintln(out, u.Dim(fmt.Sprintf("共 %d 项，下一页：--offset %d", total, p.Offset+shown)))
 	}
 }
 

@@ -21,15 +21,18 @@ var (
 )
 
 func NewRoot() *cobra.Command {
+	cobra.EnableCommandSorting = false // the order below is the order of the help
 	root := &cobra.Command{
 		Use:           "hb",
 		Short:         i18n.T("root.short"),
+		Long:          i18n.T("root.short") + "\n" + i18n.T("root.long"),
 		Version:       version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 	root.PersistentFlags().BoolVar(&flagJSON, "json", false, "output JSON (keys always English, no secrets)")
 	root.PersistentFlags().StringVar(&flagProfile, "profile", "", "profile name (default: config default_profile)")
-	root.AddCommand(newDoctorCmd(), newLoginCmd(), newLogoutCmd(), newWhoamiCmd(), newKddbCmd(), newPlayCmd(), newAssetsCmd(), newHintsCmd(), newUnsnowCmd())
+	root.AddCommand(newLoginCmd(), newLogoutCmd(), newWhoamiCmd(), newPlayCmd(), newKddbCmd(), newAssetsCmd(), newHintsCmd(), newUnsnowCmd(), newDoctorCmd())
+	polish(root)
 	return root
 }

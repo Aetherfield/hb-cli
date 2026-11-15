@@ -23,6 +23,7 @@ import (
 	_ "hb/internal/provider/lafish" // registers the lafish provider
 	_ "hb/internal/provider/unsnow" // registers the unsnow provider
 	"hb/internal/store"
+	"hb/internal/ui"
 )
 
 func profileName() (string, error) {
@@ -48,7 +49,7 @@ const (
 func newLoginCmd() *cobra.Command {
 	var o loginOpts
 	cmd := &cobra.Command{
-		Use:   "login [provider]",
+		Use:   "login [站点]",
 		Short: i18n.T("login.short"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -62,7 +63,7 @@ func newLoginCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&o.method, "method", "", "ext | clone | paste | clean | token (default: ask)")
 	f.StringVar(&o.browserSpec, "browser", "",
-		"browser: "+browser.KindIDs()+", or path to its exe (default: system default browser, or $HB_BROWSER)")
+		"浏览器："+browser.KindIDs()+"，或 exe 路径（默认用系统默认浏览器，或 $HB_BROWSER）")
 	f.StringVar(&o.fromProfile, "from-profile", "Default", "clone: browser profile directory name to copy")
 	f.BoolVar(&o.keepClone, "keep-clone", false, "clone: keep the copied profile afterwards (default: delete it)")
 	f.DurationVar(&o.timeout, "timeout", 5*time.Minute, "how long to wait for you to finish logging in")
@@ -169,7 +170,8 @@ func finishLogin(ctx context.Context, cmd *cobra.Command, p provider.Provider, p
 		path, _ := auth.FallbackPath()
 		fmt.Fprintln(cmd.ErrOrStderr(), i18n.T("login.file.warn", path))
 	}
-	fmt.Fprintln(cmd.OutOrStdout(), i18n.T("login.saved", p.Name(), prof)+" — "+id.Username)
+	u := ui.For(cmd.OutOrStdout())
+	fmt.Fprintln(cmd.OutOrStdout(), u.Mark(true)+" "+i18n.T("login.saved", p.Name(), prof)+" — "+u.Accent(id.Username))
 	return nil
 }
 
@@ -472,7 +474,7 @@ func waitReady(ctx context.Context, b *browser.Browser, js string) error {
 
 func newLogoutCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "logout <provider>",
+		Use:   "logout <站点>",
 		Short: i18n.T("logout.short"),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -486,15 +488,26 @@ func newLogoutCmd() *cobra.Command {
 			if err := auth.Delete(prof, args[0]); err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), i18n.T("logout.done", args[0], prof))
+			fmt.Fprintln(cmd.OutOrStdout(), ui.For(cmd.OutOrStdout()).Mark(true)+" "+i18n.T("logout.done", args[0], prof))
 			return nil
 		},
 	}
 }
 
+// shortID is an id as a short tail: a UUID's first eight characters.
+func shortID(id string) string {
+	if id == "" {
+		return ""
+	}
+	if len(id) > 12 {
+		id = id[:8] + "…"
+	}
+	return "(id " + id + ")"
+}
+
 func newWhoamiCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "whoami [provider]",
+		Use:   "whoami [站点]",
 		Short: i18n.T("whoami.short"),
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -511,6 +524,8 @@ func newWhoamiCmd() *cobra.Command {
 				Username string `json:"username,omitempty"`
 				ID       string `json:"id,omitempty"`
 				Error    string `json:"error,omitempty"`
+
+				noSession bool // nothing saved for this site: not an error to alarm over
 			}
 			var rows []row
 			for _, n := range names {
@@ -528,6 +543,7 @@ func newWhoamiCmd() *cobra.Command {
 				}
 				if err != nil {
 					r.Error = err.Error()
+					r.noSession = errors.Is(err, auth.ErrNoSession)
 				}
 				rows = append(rows, r)
 			}
@@ -537,12 +553,17 @@ func newWhoamiCmd() *cobra.Command {
 				enc.SetIndent("", "  ")
 				return enc.Encode(rows)
 			}
+			u := ui.For(out)
 			for _, r := range rows {
-				if r.Error != "" {
-					fmt.Fprintf(out, "%-8s ✗ %s\n", r.Provider, r.Error)
-					continue
+				name := u.Bold(ui.Pad(r.Provider, 8))
+				switch {
+				case r.noSession:
+					fmt.Fprintf(out, "%s %s %s\n", name, u.Dim("－ 未登录"), u.Dim("→ hb login "+r.Provider))
+				case r.Error != "":
+					fmt.Fprintf(out, "%s %s %s\n", name, u.Mark(false), u.Bad(r.Error))
+				default:
+					fmt.Fprintf(out, "%s %s %s %s\n", name, u.Mark(true), u.Accent(r.Username), u.Dim(shortID(r.ID)))
 				}
-				fmt.Fprintf(out, "%-8s ✓ %s (id %s)\n", r.Provider, r.Username, r.ID)
 			}
 			return nil
 		},
