@@ -95,6 +95,15 @@ func (l *Lafish) fetchSession(ctx context.Context, s auth.Session) (sessionResp,
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
+		var env struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &env) == nil && env.Error.Code != "" {
+			return sessionResp{}, &APIError{Status: resp.StatusCode, Code: env.Error.Code, Message: env.Error.Message, Body: body, ByToken: s.Token != ""}
+		}
 		return sessionResp{}, fmt.Errorf("lafish /session: HTTP %d", resp.StatusCode)
 	}
 	var out sessionResp
@@ -112,9 +121,9 @@ func (l *Lafish) Whoami(ctx context.Context, s auth.Session) (provider.Identity,
 	}
 	if r.User == nil {
 		if s.Token != "" {
-			// Where the site has not shipped personal tokens yet, the header is
-			// ignored and the request reads as anonymous.
-			return provider.Identity{}, fmt.Errorf("令牌没有被接受：它可能已停用或过期，也可能这个站点还没有上线个人令牌；到「我的 → 个人令牌」确认，再运行 `hb login lafish`")
+			// A site without personal tokens ignores the header, and the request
+			// reads as anonymous; a wrong, stopped or run-out token is a 401 instead.
+			return provider.Identity{}, fmt.Errorf("令牌没有被接受：它可能已停用或过期，也可能这个站点不支持个人令牌；到「我的 → 个人令牌」确认，再运行 `hb login lafish`")
 		}
 		return provider.Identity{}, fmt.Errorf("not logged in (session expired?); run `hb login lafish`")
 	}

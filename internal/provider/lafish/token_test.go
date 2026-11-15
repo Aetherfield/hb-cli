@@ -2,10 +2,12 @@ package lafish
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"hb/internal/auth"
 	"hb/internal/httpx"
@@ -118,5 +120,57 @@ func TestTokenRefusalsAreReadable(t *testing.T) {
 	_, err = l.ClaimCode(context.Background(), sess(), "a", "x", "")
 	if err == nil || !strings.Contains(err.Error(), "INVALID_PERSONAL_TOKEN") {
 		t.Fatalf("cookie sessions are not renamed: %v", err)
+	}
+}
+
+// What lafish added after the merge (docs/personal-token-design.md §8): a
+// per-minute limit per account, the 站长's switch, and the sender's choice.
+
+func TestPausedAndClaimsOffAreExplained(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		switch r.URL.Path {
+		case "/api/session":
+			w.Write([]byte(`{"error":{"code":"PERSONAL_TOKENS_PAUSED","message":"个人令牌暂时停用了，请在网页上操作。"}}`))
+		case "/api/activities/off/page-identity":
+			w.Write([]byte(`{"error":{"code":"TOKEN_CLAIMS_OFF","message":"这个红包不让用令牌领"}}`))
+		default:
+			w.Write([]byte(`{"error":{"code":"PERSONAL_TOKENS_PAUSED","message":"x"}}`))
+		}
+	}))
+	defer srv.Close()
+	l := &Lafish{BaseURL: srv.URL + "/api/session", API: srv.URL + "/api", HTTP: httpx.New()}
+	ctx := context.Background()
+
+	_, err := l.Whoami(ctx, tokenSess())
+	if err == nil || !strings.Contains(err.Error(), "站长暂时关了个人令牌") || !strings.Contains(err.Error(), "令牌本身还有效") {
+		t.Fatalf("the switch is off: %v", err)
+	}
+	_, err = l.PageIdentity(ctx, tokenSess(), "off", "nonce12345")
+	if err == nil || !strings.Contains(err.Error(), "发放者不允许用个人令牌领取") || !strings.Contains(err.Error(), "在网页上领") {
+		t.Fatalf("the sender turned token claims off: %v", err)
+	}
+}
+
+func TestATokenOverTheLimitIsToldHowLongToWaitAndNotRetried(t *testing.T) {
+	var n int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n++
+		w.Header().Set("Retry-After", "60")
+		w.WriteHeader(429)
+		w.Write([]byte(`{"error":{"code":"RATE_LIMITED","message":"令牌的请求太频繁了，一分钟后再试。"}}`))
+	}))
+	defer srv.Close()
+	l := &Lafish{API: srv.URL + "/api", HTTP: httpx.New()}
+	_, err := l.ClaimCode(context.Background(), tokenSess(), "a", "x", "")
+	var rl *httpx.RateLimitedError
+	if !errors.As(err, &rl) || rl.RetryAfter != 60*time.Second {
+		t.Fatalf("%v", err)
+	}
+	if !strings.Contains(err.Error(), "请求太频繁") || !strings.Contains(err.Error(), "1m0s") {
+		t.Errorf("say how long: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("%d requests: a 429 is never retried", n)
 	}
 }

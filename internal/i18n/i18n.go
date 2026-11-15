@@ -67,8 +67,8 @@ var catalog = map[string]map[Lang]string{
 		EN: "Clean dedicated browser — log in once, shared by all sites (Chromium family only)",
 	},
 	"login.m.token": {
-		ZH: "个人令牌 — 粘贴你在网页上创建的令牌（不用浏览器；要站点已经上线这个功能）",
-		EN: "Personal token — paste one made on the site (no browser; the site must offer them)",
+		ZH: "个人令牌 — 粘贴你在网页「我的 → 个人令牌」创建的令牌（不用浏览器，也不用 cookie）",
+		EN: "Personal token — paste one made on the site's 我的 page (no browser, no cookie)",
 	},
 	"login.ext.install": {
 		ZH: "Chrome/Edge/Brave 等:\n  1) 打开 chrome://extensions（Edge: edge://extensions），开启「开发者模式」\n  2) 「加载已解压的扩展程序」选择: %s（只需装一次）\nFirefox 系:\n  1) 打开 about:debugging#/runtime/this-firefox → 「临时载入附加组件」，选上面目录里的 manifest.json\n  2) 在 about:addons → 该扩展 → 权限，允许访问站点（重启 Firefox 后需重新载入）",

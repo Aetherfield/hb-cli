@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -195,7 +196,7 @@ func playText(cmd *cobra.Command, ctx context.Context, ls lafishSession, act laf
 		var ae *lafish.APIError
 		switch {
 		case errors.As(err, &rl):
-			return fmt.Errorf("还在冷却，%s 后再试", rl.RetryAfter)
+			return fmt.Errorf("请求太频繁，或者还在冷却：%s 后再试", rl.RetryAfter.Round(time.Second))
 		case errors.As(err, &ae) && ae.Code == "HUMAN_CHECK_REQUIRED":
 			return errors.New("这个红包要人机验证，hb 不替你过：请到红包页的指令框里提交")
 		}

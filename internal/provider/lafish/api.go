@@ -29,6 +29,12 @@ func (e *APIError) Error() string {
 	if e.ByToken && e.Code == "INVALID_PERSONAL_TOKEN" {
 		return "lafish: 令牌不对、已过期或已停用；到「我的 → 个人令牌」重新创建，再运行 `hb login lafish`"
 	}
+	switch e.Code {
+	case "PERSONAL_TOKENS_PAUSED": // the 站长's switch: the page still works, and the token is still good
+		return "lafish: 站长暂时关了个人令牌，请先在网页上操作；令牌本身还有效，重新开放后接着能用"
+	case "TOKEN_CLAIMS_OFF": // the sender's choice, per 红包
+		return "lafish: 这个红包的发放者不允许用个人令牌领取（也不能用令牌进它的附带网页），请在网页上领"
+	}
 	if e.ByToken && e.Code == "PERSONAL_TOKEN_NOT_ALLOWED" {
 		return "lafish: 这个操作令牌做不了（令牌只管查看、领取、口令兑换和附带网页认人），请在网页上操作"
 	}

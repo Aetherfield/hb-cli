@@ -22,7 +22,7 @@ type RateLimitedError struct {
 }
 
 func (e *RateLimitedError) Error() string {
-	return fmt.Sprintf("rate limited, retry after %s", e.RetryAfter)
+	return fmt.Sprintf("请求太频繁（HTTP 429），%s 后再自己重试", e.RetryAfter.Round(time.Second))
 }
 
 type Client struct {
