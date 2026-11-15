@@ -321,6 +321,14 @@ func (m *Model) tile(c PublicCard, idx, i int) grid {
 				}
 			}
 			blit(g, iconAt(k), ix, iy, &p, 0)
+		} else if k, ok := m.hintKnown(c, idx); ok { // the game's numbers settle what it is
+			p := hexColor("#2563eb")
+			for y := 1; y < w-3; y++ {
+				for x := 1; x < w-1; x++ {
+					g[y][x] = mix(g[y][x], p, 0.35)
+				}
+			}
+			blit(g, iconAt(k), ix, iy, &p, 0)
 		}
 	}
 

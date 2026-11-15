@@ -67,6 +67,16 @@ func (m *Model) hintDanger(c PublicCard, idx int) bool {
 	return m.adviceOf(c).IsDanger(idx)
 }
 
+// hintKnown: this undug cell is a particular kind, because the game's own
+// numbers leave no other choice (and you did not need a spyglass for it).
+func (m *Model) hintKnown(c PublicCard, idx int) (Kind, bool) {
+	if !m.hintsActive() || cellAt(c, idx) != nil || c.Fixed[fmt.Sprint(idx)] != "" {
+		return "", false
+	}
+	k, ok := m.adviceOf(c).Known[idx]
+	return k, ok
+}
+
 // dangerCells are the undug cells of a card that certainly hold a danger.
 func dangerCells(c PublicCard, a Advice) []string {
 	var idx []int

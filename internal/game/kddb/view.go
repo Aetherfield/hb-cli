@@ -248,6 +248,10 @@ func (m *Model) cellDraw(c PublicCard, idx int, sel bool) string {
 			g := glyphs[k]
 			ch, fg, bg = orGlyph(g.ch), orColor(g.color), "53"
 			underline = true
+		} else if k, ok := m.hintKnown(c, idx); ok { // the game's numbers settle what it is
+			g := glyphs[k]
+			ch, fg, bg = orGlyph(g.ch), orColor(g.color), "17"
+			underline = true
 		}
 	}
 	if m.hintSafe(c, idx) && ch == "▒" { // the advisor: a cell that cannot hold a danger
@@ -307,6 +311,8 @@ func (m *Model) cellInfo(c PublicCard) string {
 		what = "还没挖"
 		if k, ok := m.peekAt(c.ID, idx); ok {
 			what += "；你知道它是" + KindNames[k]
+		} else if k, ok := m.hintKnown(c, idx); ok {
+			what += "；按规则推出它是" + KindNames[k]
 		}
 	}
 	if t, ok := c.torchAt(idx); ok {
@@ -556,7 +562,7 @@ func (m *Model) helpView() string {
 	b.WriteString("  g             收益卡：逐格记录和全场前几名\n")
 	b.WriteString("  z             缩放：自动 → 符号 → 4/6/8/16 像素图标（16 是原版贴图的原始大小，一格占 16 列 8 行）。把终端字体调小，格子就更大更清楚\n")
 	b.WriteString("  r             重新拉取状态     q  退出\n")
-	b.WriteString("  H             显示/隐藏建议（启动时要加 --hints 才有）：绿色 + 是按规则推出不可能有危险的格子，红底 ✗ 是一定有危险的格子（别挖），\n")
+	b.WriteString("  H             显示/隐藏建议（启动时要加 --hints 才有）：绿色 + 是按规则推出不可能有危险的格子，红底 ✗ 是一定有危险的格子（别挖），带下划线的深蓝底格子是数量已经定死了内容的（直接画成它是什么），\n")
 	b.WriteString("                光标所在格会写危险概率（估算）。它只给建议，挖不挖、挖哪格都是你按键\n")
 	b.WriteString("  n / N         （建议开着时）光标跳到下一个 / 上一个零风险的格子，跨卡片（会切卡，到头绕一圈，关闭的卡跳过）；只移动光标，不会挖\n")
 	b.WriteString("  J             开关「挖完自动把光标跳到最近的零风险格」（这张卡没有了就去下一张有的卡）；同样只移动光标\n\n")

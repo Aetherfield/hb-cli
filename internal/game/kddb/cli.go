@@ -799,6 +799,18 @@ func (s *Shell) cmdHint() error {
 	if bad := dangerCells(*c, a); len(bad) > 0 {
 		s.say("%s %s", danger.Render("一定危险"), strings.Join(bad, " "))
 	}
+	if len(a.Known) > 0 {
+		var idx []int
+		for i := range a.Known {
+			idx = append(idx, i)
+		}
+		sort.Ints(idx)
+		var ps []string
+		for _, i := range idx {
+			ps = append(ps, fmt.Sprintf("%s=%s", coord(c.Size, i), KindNames[a.Known[i]]))
+		}
+		s.say("%s %s", bold.Render("按数量能确定是什么"), strings.Join(ps, " "))
+	}
 	if len(safe) > 0 {
 		s.say("%s %s", good.Render("零风险"), strings.Join(safe, " "))
 	} else {

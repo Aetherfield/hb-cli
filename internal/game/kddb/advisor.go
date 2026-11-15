@@ -32,6 +32,7 @@ type Advice struct {
 	Unknown int             // cells you do not know: not dug, not fixed, not seen by you
 	Risk    map[int]float64 // chance a danger is under each unknown cell (1 = certainly)
 	Safe    []int           // cells with no danger in any arrangement the rules allow (incl. ones you saw)
+	Known   map[int]Kind    // cells whose kind the counts and rules settle (not ones you saw yourself)
 	Notes   []string
 }
 
@@ -149,6 +150,79 @@ func torchArea(size, at int, v2 bool) []int {
 // Advise works out what is certain and what is likely on a card. peeks are the
 // cells you saw yourself (they may be on other cards; those are ignored).
 func Advise(c PublicCard, peeks []Peek) Advice {
+	a := advise(c, peeks)
+	deduceKinds(c, peeks, &a)
+	return a
+}
+
+// deduceKinds says what a cell is when the game's own numbers leave no other
+// choice. The card's "还剩" counts are what is left to find among the cells
+// not dug, not fixed and not seen by you; so
+//
+//   - if only one kind is left, every one of those cells is that kind;
+//   - a cell that certainly holds a danger is that danger when only one danger
+//     kind is left, and a cell that certainly holds none is that kind when only
+//     one other kind is left.
+//
+// It does nothing unless the counts add up to the cells they describe.
+func deduceKinds(c PublicCard, peeks []Peek, a *Advice) {
+	n := c.Size * c.Size
+	if n == 0 || len(c.Cells) < n || c.Closed || len(c.Left) == 0 {
+		return
+	}
+	left := map[Kind]int{}
+	for k, v := range c.Left {
+		if v > 0 {
+			left[k] = v
+		}
+	}
+	seen := map[int]bool{}
+	for _, p := range peeks {
+		if p.CardID == c.ID && p.Index >= 0 && p.Index < n && c.Cells[p.Index] == nil && c.Fixed[fmt.Sprint(p.Index)] == "" && !seen[p.Index] {
+			seen[p.Index] = true
+			if left[p.Kind]--; left[p.Kind] <= 0 {
+				delete(left, p.Kind)
+			}
+		}
+	}
+	var unknown []int
+	for i := 0; i < n; i++ {
+		if c.Cells[i] == nil && c.Fixed[fmt.Sprint(i)] == "" && !seen[i] {
+			unknown = append(unknown, i)
+		}
+	}
+	sum := 0
+	var dangersLeft, othersLeft []Kind
+	for k, v := range left {
+		sum += v
+		if dangerKinds[k] {
+			dangersLeft = append(dangersLeft, k)
+		} else {
+			othersLeft = append(othersLeft, k)
+		}
+	}
+	if sum != len(unknown) || len(unknown) == 0 {
+		return // the counts do not describe exactly these cells: say nothing
+	}
+	known := map[int]Kind{}
+	for _, i := range unknown {
+		switch {
+		case len(left) == 1:
+			for k := range left {
+				known[i] = k
+			}
+		case a.Exact && a.IsDanger(i) && len(dangersLeft) == 1:
+			known[i] = dangersLeft[0]
+		case a.Exact && a.IsSafe(i) && len(othersLeft) == 1:
+			known[i] = othersLeft[0]
+		}
+	}
+	if len(known) > 0 {
+		a.Known = known
+	}
+}
+
+func advise(c PublicCard, peeks []Peek) Advice {
 	a := Advice{Exact: true, Risk: map[int]float64{}}
 	n := c.Size * c.Size
 	switch {

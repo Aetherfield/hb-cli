@@ -323,7 +323,7 @@ func TestWorldMapKeepsEveryCardApart(t *testing.T) {
 func twoCards() State {
 	st := hintState()
 	b := card(2, 1, 0, 5)
-	b.Left = map[Kind]int{"tnt": 4, "emerald": 21}
+	b.Left = map[Kind]int{"tnt": 4, "emerald": 11, "coal": 10}
 	b.Torches = []Torch{{At: 12, Level: 0, V: 2}}
 	st.Game.Cards = append(st.Game.Cards, b)
 	return st

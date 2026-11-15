@@ -13,7 +13,7 @@ import (
 func hintState() State {
 	st := baseState()
 	c := card(1, 0, 0, 5)
-	c.Left = map[Kind]int{"tnt": 4, "emerald": 21}
+	c.Left = map[Kind]int{"tnt": 4, "emerald": 11, "coal": 10} // two harmless kinds: the numbers cannot name a safe cell
 	c.Torches = []Torch{{At: 12, Level: 0, V: 2}}
 	st.Game.Cards = []PublicCard{c}
 	return st
@@ -176,9 +176,9 @@ func TestTUINeverDigsOnItsOwnWithHintsOn(t *testing.T) {
 func lastDangerState() State {
 	st := baseState()
 	c := card(1, 0, 0, 3)
-	c.Left = map[Kind]int{"tnt": 1}
+	c.Left = map[Kind]int{"tnt": 1, "crystal": 1} // two kinds of danger: it cannot say which is which
 	for i := range c.Cells {
-		if i != 5 {
+		if i != 5 && i != 8 {
 			c.Cells[i] = &OpenCell{Kind: "emerald", UID: 9}
 		}
 	}
@@ -218,5 +218,66 @@ func TestLineModeMapMarksCertainDangers(t *testing.T) {
 	sh.Hints = true
 	if _, err := sh.Exec("hint"); err != nil || !strings.Contains(out.String(), "一定危险") || !strings.Contains(out.String(), "2,3") {
 		t.Fatalf("hint: %q (%v)", out.String(), err)
+	}
+}
+
+func TestWhenTheNumbersSettleACellItIsDrawnAsWhatItIs(t *testing.T) {
+	// one cell undug, and the card says only a TNT is left: that cell is TNT
+	st := baseState()
+	c := card(1, 0, 0, 3)
+	c.Left = map[Kind]int{"tnt": 1}
+	for i := range c.Cells {
+		if i != 5 {
+			c.Cells[i] = &OpenCell{Kind: "emerald", UID: 9}
+		}
+	}
+	st.Game.Cards = []PublicCard{c}
+	m := newModel(t, &fakeGame{}, nil, Options{Hints: true, Render: "glyph"}, st)
+	m.width = 150
+	if k, ok := m.hintKnown(c, 5); !ok || k != "tnt" {
+		t.Fatalf("known: %v %v", k, ok)
+	}
+	m.cur = 5
+	v := m.View()
+	if !strings.Contains(v, glyphs["tnt"].ch) || !strings.Contains(v, "按规则推出它是") {
+		t.Fatalf("it should be drawn as TNT and said so:\n%s", v)
+	}
+	// without --hints nothing is deduced on screen
+	off := newModel(t, &fakeGame{}, nil, Options{Render: "glyph"}, st)
+	if _, ok := off.hintKnown(c, 5); ok {
+		t.Fatal("no deduced kinds without --hints")
+	}
+}
+
+func TestDeducedKindsNeedCountsThatAddUp(t *testing.T) {
+	c := card(1, 0, 0, 3)
+	for i := range c.Cells {
+		if i != 5 && i != 8 {
+			c.Cells[i] = &OpenCell{Kind: "emerald", UID: 9}
+		}
+	}
+	// two undug cells but the counts say three things are left: say nothing
+	c.Left = map[Kind]int{"tnt": 1, "emerald": 2}
+	if a := Advise(c, nil); len(a.Known) != 0 {
+		t.Fatalf("counts that do not add up must not name anything: %v", a.Known)
+	}
+	// two cells, two kinds left, neither certain: nothing either
+	c.Left = map[Kind]int{"tnt": 1, "emerald": 1}
+	if a := Advise(c, nil); len(a.Known) != 0 {
+		t.Fatalf("a coin flip is not a deduction: %v", a.Known)
+	}
+	// every cell the same kind left: all of them are known
+	c.Left = map[Kind]int{"emerald": 2}
+	if a := Advise(c, nil); a.Known[5] != "emerald" || a.Known[8] != "emerald" {
+		t.Fatalf("%v", a.Known)
+	}
+	// what you saw yourself comes off the counts: cell 5 seen as TNT leaves cell 8 as the emerald
+	c.Left = map[Kind]int{"tnt": 1, "emerald": 1}
+	a := Advise(c, []Peek{{CardID: 1, Index: 5, Kind: "tnt"}})
+	if a.Known[8] != "emerald" {
+		t.Fatalf("%v", a.Known)
+	}
+	if _, ok := a.Known[5]; ok {
+		t.Fatal("what you saw is drawn as a peek, not as a deduction")
 	}
 }
