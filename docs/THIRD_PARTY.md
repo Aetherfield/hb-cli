@@ -11,7 +11,7 @@ files. Nothing below is bundled in hb's releases except where marked.
 | Minecraft Wiki inventory icons | minecraft.wiki: 8 files (`Invicon TNT`, shield, ender chest, vault, spawner, ancient debris, map, enchanted golden apple). Each file's Wiki page says `License Mojang`; the list, URLs and hashes come from kddb's `inventory/provenance.json` (MIT) | The 3D-looking icons the kddb page uses for what the JAR has no stand-alone texture for. **Fetched on the player's request** by `hb assets fetch`; SHA-1 and SHA-256 checked; if the current Wiki file differs, the recorded version is looked up in the file's history | **No.** Not in the repository or releases |
 | lafish API (claim, plaza, page identity, open API, points issuer protocol) | github.com/LeUKi/hb (AGPL-3.0) and its public docs | Read as a specification; hb is a separate client and copies none of its code | No |
 | LDC (credit.linux.do) API | github.com/linux-do/credit (Apache-2.0), `docs/swagger.json` | Read as a specification | No |
-| Unsnow (hb.unsnow.org) | Closed source. Its published read-only CLI API: `https://hb.unsnow.org/openapi.json` (2026-11-15, v1.1.0) | The only API hb calls (`/api/cli/v1/...`, with the account's own personal token); `internal/provider/unsnow` | No |
+| Unsnow (hb.unsnow.org) | Closed source. Its published read-only CLI API: `https://hb.unsnow.org/openapi.json` (2026-11-15, v1.1.0) | The only API hb calls (`/api/cli/v1/...`, with the account's own personal token); `internal/provider/unsnow`, summarised in `docs/api-notes.md`. The older notes there, from a HAR of the player's own browser session, are background only | No |
 
 Minecraft is a trademark of Mojang / Microsoft. hb has no affiliation with
 Minecraft, Mojang, Microsoft, LINUX DO, lafish or Unsnow.
