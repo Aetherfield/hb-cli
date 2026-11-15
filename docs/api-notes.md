@@ -30,6 +30,9 @@ web page's own API, kept as background.
 - Client rules: requests only when the user asks; no guessing, scanning, polling, loops or automatic retries
   (401/403/404/410/5xx included); a non-JSON (HTML) answer is shown as a generic error.
 - The old `payout_status: "uncertain"` captures below were a test setup problem, not the API's meaning (see there).
+- Checked against the live site: the user reported on 2026-11-15 that `hb`'s Unsnow commands pass with a real token.
+  Which commands, and what the answers looked like, was not recorded; a captured real answer would settle the
+  response shapes above, which so far come from the published OpenAPI document and a mock server.
 
 
 Source: a HAR of the user's own session (2026-11-14) plus the site's public front-end JS inside it
@@ -41,8 +44,8 @@ Source: a HAR of the user's own session (2026-11-14) plus the site's public fron
   `GET /auth/login?redirect=` starts it, `GET /auth/logout` ends it. connect.linux.do itself sits behind a Cloudflare challenge.
 - Session cookies on every API call: `hb_sess`, `hb_sess.sig` (signed session), and **`cf_clearance`** (Cloudflare).
   The browser used Edge 157 on Windows; `cf_clearance` is normally bound to the User-Agent and IP, so the CLI must send the
-  same User-Agent. Whether Go's TLS fingerprint passes Cloudflare with these cookies is **unconfirmed**; fallback is to make
-  the calls from inside the logged-in browser (CDP `fetch`).
+  same User-Agent. Whether Go's TLS fingerprint passes Cloudflare with these cookies was never confirmed, and no longer
+  matters: `hb` uses the official token API (top of this section), which needs no cookie.
 - No CSRF header was seen. Requests send `Content-Type: application/json`.
 - `GET /api/me` returns `user{linuxdo_id,username,name,avatar_url,trust_level}`, `isOwner`, `canCreate`,
   `creditAccount{configured,client_id_masked,updated_at,verified}`, `credit_verification`, and
@@ -92,8 +95,7 @@ Source: a HAR of the user's own session (2026-11-14) plus the site's public fron
 - Requests were same-origin with `Origin: https://hb.unsnow.org`, a browser User-Agent and the cookies `hb_sess`,
   `hb_sess.sig`, `cf_clearance` (747 chars of Cookie header in total).
 - **Consequence for `hb`**: the grab cannot be sent without a Turnstile token produced by a person on the real page.
-  `hb` only does the lookup (`hb unsnow check`); the claim stays in the browser. Not tested: whether the lookup works
-  from Go against Cloudflare (TLS fingerprint), nothing here proves it.
+  `hb` only does the lookup (`hb unsnow check`); the claim stays in the browser.
 
 ### Claiming (flow from `app.js` and `claim-security.js`; the first half was written before the HAR above)
 1. Look up the packet by passcode (above). Wrong passcodes count as "misses". Past the threshold the server answers with
