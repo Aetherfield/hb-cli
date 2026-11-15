@@ -136,6 +136,9 @@ cp -r skills/hb-red-packet ~/.claude/skills/   # 配套的 Skill：规定助手�
 | `lafish_packet` | 看一个 lafish 红包：状态、领取方式、hb 能不能领 |
 | `lafish_claim_preview` / `lafish_claim` | 领取的两步：先预览，再凭 `preview_id` 领 |
 | `unsnow_me`、`unsnow_plaza`、`unsnow_packet`、`unsnow_sent`、`unsnow_received` | Unsnow 的只读查询（不能查口令） |
+| `kddb_state`、`kddb_board` | 矿洞夺宝：状态、每张卡的格子，和 hb 的风险估计（只读） |
+| `kddb_dig_grant`、`kddb_dig` | 矿洞夺宝：你授权一批（最多 10 次、10 分钟），AI 在里面一格一格挖 |
+| `kddb_claim` | 矿洞夺宝：领取已挖到的奖励（单独确认，领取后不能再挖） |
 
 **护栏是代码，不是提示词**，助手改不了（Skill 是第二道，不是第一道）：
 
@@ -151,7 +154,8 @@ cp -r skills/hb-red-packet ~/.claude/skills/   # 配套的 Skill：规定助手�
 
 - 这些护栏只管 MCP 工具。如果助手**同时**有命令行权限，并且这台机器上的 `hb` 是登录着的，它理论上能直接运行 `hb` 命令绕开。想堵上，在 Claude Code 里禁止助手运行 `hb`（例如在设置的 `permissions.deny` 里加 `Bash(hb *)`，用 `/permissions` 确认生效）。
 - 确认弹窗靠客户端支持 MCP 的 elicitation。用 SDK 的客户端测过，在 Claude Code 里实际弹出的样子我没有试过。
-- 不玩矿洞夺宝：挖格子是一个接一个的操作，现在没有开放给助手。
+- 矿洞夺宝是「一次授权一批」：你在客户端里点一次确认，AI 才能在这个红包上最多挖 N 次（N ≤ 10，10 分钟内有效，一次只能有一个授权，每小时最多请求 3 次授权、每天 10 次）；挖哪一格由 AI 选，一格一个请求，挖之前都会核对这格没挖过、不是固定格、游戏的冷却到了。**挖到危险的东西（TNT、末影水晶、刷怪笼），或任何一次出错，授权立刻作废。**领取奖励是另一次确认。lafish 说「你随意」，发红包的人仍可以在红包上关掉「允许用令牌领」，用令牌玩的人名单上会有钥匙标记。
+- 矿洞夺宝这部分，我只用假的游戏服务端测过，**没有在真实的游戏里试过**。建议第一次授权只给 1–2 次，在旁边看着。`--hints` 的风险估计也还没有拿真实对局校准过，所以返回里写的是「估计，不是保证」。
 
 ## 数据和安全
 

@@ -206,7 +206,7 @@ func TestTheToolsOnOfferAndTheOnesThatAreNot(t *testing.T) {
 	}
 	// nothing takes a passcode, a dig, or a plaza of lafish to claim from
 	for name := range have {
-		for _, banned := range []string{"password", "passcode", "code", "dig", "kddb", "play", "loop", "all", "plaza_claim", "auto"} {
+		for _, banned := range []string{"password", "passcode", "code", "play", "loop", "all", "plaza_claim", "auto"} {
 			if strings.Contains(name, banned) && name != "unsnow_plaza" {
 				t.Errorf("tool %q: names a thing the server must not do (%s)", name, banned)
 			}
@@ -615,13 +615,13 @@ func TestTheSkillNamesOnlyRealTools(t *testing.T) {
 	if !strings.HasPrefix(text, "---\nname: hb-red-packet\ndescription: ") {
 		t.Fatalf("frontmatter: %.80q", text)
 	}
-	h := start(t, true, nil)
+	h := withGame(t, newFakeGame(), nil) // with the game wired, so its tools exist
 	tools, _ := h.cs.ListTools(context.Background(), nil)
 	have := map[string]bool{}
 	for _, tool := range tools.Tools {
 		have[tool.Name] = true
 	}
-	re := regexp.MustCompile("`((?:lafish|unsnow)_[a-z_]+)`")
+	re := regexp.MustCompile("`((?:lafish|unsnow|kddb)_[a-z_]+)`")
 	named := 0
 	for _, m := range re.FindAllStringSubmatch(text, -1) {
 		named++
@@ -633,7 +633,7 @@ func TestTheSkillNamesOnlyRealTools(t *testing.T) {
 		t.Error("the Skill names the tools it is about")
 	}
 	// the rules that matter are in it
-	for _, want := range []string{"不要重试", "untrusted", "明确", "不玩矿洞夺宝", "每一个"} {
+	for _, want := range []string{"不要重试", "untrusted", "明确", "每一个", "kddb_dig_grant", "估计，不是保证", "从小开始", "领取后不能再挖"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the Skill lost a rule: %q", want)
 		}

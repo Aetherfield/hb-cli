@@ -20,6 +20,9 @@ import (
 
 var dangerKinds = map[Kind]bool{"tnt": true, "crystal": true, "spawner": true}
 
+// IsDanger says whether digging this kind hurts (TNT, an end crystal, a spawner).
+func IsDanger(k Kind) bool { return dangerKinds[k] }
+
 // Advice is what can be said about one card.
 type Advice struct {
 	// Exact is false when part of the information could not be used (it was

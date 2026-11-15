@@ -187,8 +187,7 @@ func playKddbCLI(cmd *cobra.Command, ctx context.Context, ls lafishSession, act 
 // kddbConnect signs in to the game site as the player (through lafish's page
 // identity) and returns the game client and the voucher submitter.
 func kddbConnect(cmd *cobra.Command, ls lafishSession, act lafish.Activity, id, siteFlag string) (*kddb.Client, kddb.SubmitFunc, error) {
-	lf, s := ls.lf, ls.s
-	origin, err := gameSite(act, siteFlag)
+	client, submit, origin, err := kddbClient(ls.lf, ls.s, act, id, siteFlag)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -196,7 +195,16 @@ func kddbConnect(cmd *cobra.Command, ls lafishSession, act lafish.Activity, id, 
 	if act.Status != "active" {
 		fmt.Fprintf(cmd.ErrOrStderr(), "注意：红包状态是 %q，可能已不能挖。\n", act.Status)
 	}
+	return client, submit, nil
+}
 
+// kddbClient is the game client and the voucher submitter of a packet, and the
+// game site's origin. Nothing is printed: the terminal and the MCP server both use it.
+func kddbClient(lf *lafish.Lafish, s auth.Session, act lafish.Activity, id, siteFlag string) (*kddb.Client, kddb.SubmitFunc, string, error) {
+	origin, err := gameSite(act, siteFlag)
+	if err != nil {
+		return nil, nil, "", err
+	}
 	identity := func(ctx context.Context, nonce string) (string, error) {
 		raw, err := lf.PageIdentity(ctx, s, id, nonce)
 		if err != nil {
@@ -214,7 +222,7 @@ func kddbConnect(cmd *cobra.Command, ls lafishSession, act lafish.Activity, id, 
 	submit := func(ctx context.Context, voucher string) (string, error) {
 		return submitVoucher(ctx, lf, s, id, voucher)
 	}
-	return client, submit, nil
+	return client, submit, origin, nil
 }
 
 // gameSite works out the game site origin from the packet's attached page.
