@@ -97,8 +97,8 @@ func (l *Lafish) do(ctx context.Context, s auth.Session, method, path string, bo
 }
 
 // Activity is the public read of a packet (GET /activities/:id). Only fields
-// hb needs are typed; Raw keeps the rest. Fields marked "unconfirmed" in
-// docs/api-notes.md are decoded loosely.
+// hb needs are typed; Raw keeps the rest, so a field hb has not seen is
+// decoded loosely rather than dropped.
 type Activity struct {
 	ID                string          `json:"id"`
 	Title             string          `json:"title"`

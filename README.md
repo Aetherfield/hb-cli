@@ -116,7 +116,6 @@ go vet ./...
 go test ./...
 ```
 
-- [`docs/api-notes.md`](docs/api-notes.md)：各站接口的整理，标明哪些来自源码、哪些来自抓包、哪些还没验证。
 - [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md)：用到的别人的协议和文件，以及 Minecraft 素材为什么不随 hb 分发。
 
 ## 许可
