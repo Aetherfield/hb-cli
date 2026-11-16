@@ -1,0 +1,20 @@
+name: 提建议
+description: 想让 hb 多做点什么
+labels: [enhancement]
+body:
+  - type: textarea
+    id: pain
+    attributes:
+      label: 现在哪里不方便
+      description: 先说痛点，再说想要的样子
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 想要的样子
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: hb 不替你过人机验证，也不自动、不轮询、不重试，每次操作都由你触发（见 README）。建议功能请在这个范围内想。

@@ -1,0 +1,35 @@
+name: 报 bug
+description: hb 的行为和预期不一样
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 发生了什么
+      description: 你做了什么、看到了什么、本来以为会怎样
+    validations:
+      required: true
+  - type: textarea
+    id: cmd
+    attributes:
+      label: 命令和输出
+      description: 用的命令，和终端里的输出（`--json` 的输出不含密钥，可以直接贴）
+      render: shell
+  - type: textarea
+    id: doctor
+    attributes:
+      label: hb doctor
+      description: 贴 `hb doctor` 的输出，里面有版本、系统和网络情况
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 系统
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: 别贴 cookie、`hbp_…`、`hbr_…` 令牌。

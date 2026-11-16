@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 提问和闲聊
+    url: https://github.com/Aetherfield/hb-cli/discussions
+    about: 用法问题、想法、没想清楚的建议，先来 Discussions
