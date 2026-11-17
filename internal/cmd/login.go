@@ -67,7 +67,8 @@ func newLoginCmd() *cobra.Command {
 	f.StringVar(&o.fromProfile, "from-profile", "Default", "clone: browser profile directory name to copy")
 	f.BoolVar(&o.keepClone, "keep-clone", false, "clone: keep the copied profile afterwards (default: delete it)")
 	f.DurationVar(&o.timeout, "timeout", 5*time.Minute, "how long to wait for you to finish logging in")
-	f.BoolVar(&o.downloadExt, "download-ext", false, "ext: download the pinned hb session bridge release and check its SHA-256")
+	f.BoolVar(&o.downloadExt, "download-ext", false, "ext: download the pinned hb session bridge release again, even if it is already unpacked")
+	f.StringVar(&o.extZip, "ext-zip", "", "ext: unpack a hb-session-bridge zip you downloaded (its SHA-256 is checked)")
 	f.BoolVar(&o.tokenStdin, "token-stdin", false, "sites with a personal token (lafish, unsnow): read it from stdin instead of asking")
 	return cmd
 }
@@ -80,6 +81,7 @@ type loginOpts struct {
 	timeout     time.Duration
 	tokenStdin  bool
 	downloadExt bool
+	extZip      string
 }
 
 func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
@@ -184,16 +186,30 @@ func loginExt(ctx context.Context, cmd *cobra.Command, p provider.Provider, o lo
 		return auth.Session{}, err
 	}
 	w := cmd.ErrOrStderr()
-	if o.downloadExt {
-		fmt.Fprintln(w, i18n.T("login.ext.downloading", ext.BridgeVersion, ext.BridgeZipURL()))
-		dir, err := ext.Download(ctx, nil, ext.BridgeZipURL(), ext.BridgeSHA256, home)
-		if err != nil {
+	// hb unpacks the extension for you: from a zip you downloaded, from the
+	// folder it unpacked before (same release), or downloaded now; the zip's
+	// SHA-256 is always checked against the pinned one.
+	var dir string
+	switch {
+	case o.extZip != "":
+		if dir, err = ext.UnpackFile(o.extZip, ext.BridgeSHA256, home); err != nil {
 			return auth.Session{}, err
 		}
-		fmt.Fprintln(w, i18n.T("login.ext.install", dir))
-	} else {
-		fmt.Fprintln(w, i18n.T("login.ext.get", ext.BridgeReleases, ext.BridgeVersion))
+		fmt.Fprintln(w, i18n.T("login.ext.unpacked", o.extZip))
+	case o.downloadExt:
+		fmt.Fprintln(w, i18n.T("login.ext.downloading", ext.BridgeVersion, ext.BridgeZipURL()))
+		if dir, err = ext.Download(ctx, nil, ext.BridgeZipURL(), ext.BridgeSHA256, home); err != nil {
+			return auth.Session{}, err
+		}
+	default:
+		if _, ok := ext.Ready(home, ext.BridgeSHA256); !ok {
+			fmt.Fprintln(w, i18n.T("login.ext.downloading", ext.BridgeVersion, ext.BridgeZipURL()))
+		}
+		if dir, _, err = ext.Ensure(ctx, nil, ext.BridgeZipURL(), ext.BridgeSHA256, home); err != nil {
+			return auth.Session{}, fmt.Errorf("%w\n%s", err, i18n.T("login.ext.manual", ext.BridgeReleases, ext.BridgeVersion))
+		}
 	}
+	fmt.Fprintln(w, i18n.T("login.ext.install", dir))
 	ln, err := ext.Listen()
 	if err != nil {
 		return auth.Session{}, err

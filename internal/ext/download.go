@@ -36,6 +36,54 @@ func BridgeZipURL() string {
 
 const maxZip = 2 << 20 // the extension is about 10 KB; anything this big is not it
 
+// stamp marks a folder hb unpacked from the pinned zip: it holds the zip's
+// SHA-256, so the folder is used again only for that exact release.
+const stamp = ".hb-sha256"
+
+// BridgeDir is where the pinned release is (or will be) unpacked.
+func BridgeDir(dir string) string { return filepath.Join(dir, "hb-session-bridge-"+BridgeVersion) }
+
+// Ready returns the unpacked folder when it is there from the zip with this hash.
+func Ready(dir, sum string) (string, bool) {
+	dst := BridgeDir(dir)
+	b, err := os.ReadFile(filepath.Join(dst, stamp))
+	if err != nil || strings.TrimSpace(string(b)) != sum {
+		return "", false
+	}
+	if _, err := os.Stat(filepath.Join(dst, "manifest.json")); err != nil {
+		return "", false
+	}
+	return dst, true
+}
+
+// Ensure gives the unpacked extension: the folder already there for this
+// release, or else a fresh download, checked and unpacked.
+func Ensure(ctx context.Context, hc *http.Client, url, sum, dir string) (path string, fresh bool, err error) {
+	if p, ok := Ready(dir, sum); ok {
+		return p, false, nil
+	}
+	p, err := Download(ctx, hc, url, sum, dir)
+	return p, err == nil, err
+}
+
+// UnpackFile checks a zip the person downloaded themselves against the pinned
+// SHA-256 and unpacks it like Download does.
+func UnpackFile(file, sum, dir string) (string, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(io.LimitReader(f, maxZip+1))
+	if err != nil {
+		return "", err
+	}
+	if len(b) > maxZip {
+		return "", errors.New("这个 zip 大得不正常，不像扩展")
+	}
+	return unpack(b, sum, dir)
+}
+
 // Download fetches the pinned extension, checks its SHA-256, and unpacks it to
 // <dir>/hb-session-bridge-<version>, which it returns. An existing copy of
 // that version is replaced.
@@ -62,16 +110,24 @@ func Download(ctx context.Context, hc *http.Client, url, sum, dir string) (strin
 	if len(b) > maxZip {
 		return "", errors.New("下载的扩展大得不正常，已放弃")
 	}
+	return unpack(b, sum, dir)
+}
+
+// unpack checks the zip's SHA-256 and unpacks it into a clean folder, stamped.
+func unpack(b []byte, sum, dir string) (string, error) {
 	got := sha256.Sum256(b)
 	if hex.EncodeToString(got[:]) != sum {
-		return "", fmt.Errorf("下载的扩展 SHA-256 对不上（期望 %s，得到 %s），已丢弃，没有解压", sum, hex.EncodeToString(got[:]))
+		return "", fmt.Errorf("扩展 zip 的 SHA-256 对不上（期望 %s，得到 %s），已丢弃，没有解压；应该是 v%s 的 hb-session-bridge-%s.zip", sum, hex.EncodeToString(got[:]), BridgeVersion, BridgeVersion)
 	}
-	dst := filepath.Join(dir, "hb-session-bridge-"+BridgeVersion)
+	dst := BridgeDir(dir)
 	if err := os.RemoveAll(dst); err != nil {
 		return "", err
 	}
 	if err := unzip(b, dst); err != nil {
 		_ = os.RemoveAll(dst)
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(dst, stamp), []byte(sum+"\n"), 0o644); err != nil {
 		return "", err
 	}
 	return dst, nil

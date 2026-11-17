@@ -186,3 +186,40 @@ func TestThePinnedReleaseAddressIsThisVersion(t *testing.T) {
 		t.Fatal(u)
 	}
 }
+
+func TestEnsureReusesTheUnpackedReleaseAndUnpacksALocalZip(t *testing.T) {
+	z := zipOf(t, map[string]string{"manifest.json": "{}"})
+	sum := sumOf(z)
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hits++; _, _ = w.Write(z) }))
+	defer srv.Close()
+	dir := t.TempDir()
+	p1, fresh, err := Ensure(context.Background(), nil, srv.URL, sum, dir)
+	if err != nil || !fresh || hits != 1 {
+		t.Fatalf("first: %v fresh=%v hits=%d", err, fresh, hits)
+	}
+	p2, fresh, err := Ensure(context.Background(), nil, srv.URL, sum, dir)
+	if err != nil || fresh || hits != 1 || p2 != p1 {
+		t.Fatalf("second must reuse the folder: %v fresh=%v hits=%d", err, fresh, hits)
+	}
+	// a folder from another release (another hash) is not reused
+	if _, ok := Ready(dir, strings.Repeat("1", 64)); ok {
+		t.Fatal("a different hash must not count as ready")
+	}
+	// a zip the person downloaded: checked, then unpacked
+	f := filepath.Join(t.TempDir(), "hb-session-bridge.zip")
+	if err := os.WriteFile(f, z, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir2 := t.TempDir()
+	got, err := UnpackFile(f, sum, dir2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := Ready(dir2, sum); !ok || got != BridgeDir(dir2) {
+		t.Fatal("unpacked from the local zip")
+	}
+	if _, err := UnpackFile(f, strings.Repeat("0", 64), t.TempDir()); err == nil {
+		t.Fatal("a local zip with the wrong hash is refused")
+	}
+}

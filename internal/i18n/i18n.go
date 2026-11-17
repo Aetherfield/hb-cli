@@ -70,13 +70,13 @@ var catalog = map[string]map[Lang]string{
 		ZH: "个人令牌 — 粘贴你在网页「我的 → 个人令牌」创建的令牌（不用浏览器，也不用 cookie）",
 		EN: "Personal token — paste one made on the site's 我的 page (no browser, no cookie)",
 	},
-	"login.ext.get": {
-		ZH: "要先装浏览器扩展 hb session bridge（只装一次）：\n  从 %s 下载 v%s 的 zip 并解压，或者重新运行这条命令并加 --download-ext 让 hb 代为下载（会核对 SHA-256）。\n" +
-			"Chrome/Edge/Brave 等:\n  1) 打开 chrome://extensions（Edge: edge://extensions），开启「开发者模式」\n  2) 「加载已解压的扩展程序」选择解压出的目录\n" +
-			"Firefox 系:\n  1) 打开 about:debugging#/runtime/this-firefox → 「临时载入附加组件」，选目录里的 manifest.json\n  2) 在 about:addons → 该扩展 → 权限，允许访问站点（重启 Firefox 后需重新载入）\n已经装好的话，直接看下面的配对码。",
-		EN: "Install the browser extension hb session bridge first (once):\n  download the v%[2]s zip from %[1]s and unpack it, or run this again with --download-ext to have hb fetch it (its SHA-256 is checked).\n" +
-			"Chrome/Edge/Brave etc.:\n  1) open chrome://extensions (Edge: edge://extensions), enable Developer mode\n  2) \"Load unpacked\" and pick the unpacked folder\n" +
-			"Firefox family:\n  1) open about:debugging#/runtime/this-firefox -> \"Load Temporary Add-on\", pick manifest.json in that folder\n  2) in about:addons -> the extension -> Permissions, allow site access (re-load after a Firefox restart)\nAlready installed? Use the pairing code below.",
+	"login.ext.manual": {
+		ZH: "也可以自己从 %s 下载 v%s 的 zip，再运行 hb login --method ext --ext-zip <下载的 zip>，hb 核对后帮你解压。",
+		EN: "Or download the v%[2]s zip from %[1]s yourself and run hb login --method ext --ext-zip <the zip>; hb checks and unpacks it.",
+	},
+	"login.ext.unpacked": {
+		ZH: "已核对并解压 %s",
+		EN: "checked and unpacked %s",
 	},
 	"login.ext.downloading": {
 		ZH: "下载扩展 hb session bridge v%s：%s",
