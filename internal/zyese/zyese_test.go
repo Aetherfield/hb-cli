@@ -128,16 +128,17 @@ func TestCallbackTakesOnlyTheCurrentAttemptOnce(t *testing.T) {
 // ---- a fake game server ----
 
 type fakeServer struct {
-	t       *testing.T
-	srv     *httptest.Server
-	mu      sync.Mutex
-	frames  []map[string]any // what the client sent on the socket (not heartbeats)
-	beats   int
-	auths   []string // Authorization headers of the handshakes
-	abandon []map[string]string
-	conn    *websocket.Conn
-	ready   chan struct{}
-	got     chan map[string]any
+	t        *testing.T
+	srv      *httptest.Server
+	mu       sync.Mutex
+	frames   []map[string]any // what the client sent on the socket (not heartbeats)
+	beats    int
+	probeAck map[string]any
+	auths    []string // Authorization headers of the handshakes
+	abandon  []map[string]string
+	conn     *websocket.Conn
+	ready    chan struct{}
+	got      chan map[string]any
 }
 
 func newFakeServer(t *testing.T) *fakeServer {
@@ -184,7 +185,7 @@ func newFakeServer(t *testing.T) *fakeServer {
 		f.mu.Lock()
 		f.conn = c
 		f.mu.Unlock()
-		f.send(`{"type":"ready","serverTime":1,"state":{"status":"playing","inputMode":"en","score":0,"ack":0,"activeTargetId":null,"enemies":[{"id":1,"x":0.5,"y":0.1,"glyphs":[3,1,20],"glyphShift":0,"typedLength":0}]},"events":null}`)
+		f.send(`{"type":"ready","serverTime":1,"state":{"status":"playing","inputMode":"en","score":0,"ack":0,"activeTargetId":null,"enemies":[{"id":1,"x":0.5,"y":0.1,"glyphs":[3,1,20],"glyphShift":0,"typedLength":0}]},"events":null,"networkProbe":{"id":7,"serverSentAtUnixMs":1794913594275.5}}`)
 		f.ready <- struct{}{}
 		for {
 			_, b, err := c.Read(ctx)
@@ -196,6 +197,9 @@ func newFakeServer(t *testing.T) *fakeServer {
 			if m["type"] == "heartbeat" {
 				f.mu.Lock()
 				f.beats++
+				if a, ok := m["networkProbeAck"].(map[string]any); ok {
+					f.probeAck = a
+				}
 				f.mu.Unlock()
 				continue
 			}
@@ -320,6 +324,17 @@ func TestARunEndToEnd(t *testing.T) {
 	if beats < 2 {
 		t.Fatalf("heartbeats: %d", beats)
 	}
+	f.mu.Lock()
+	ack := f.probeAck
+	f.mu.Unlock()
+	if ack == nil || ack["id"] != float64(7) || ack["serverSentAtUnixMs"] != 1794913594275.5 {
+		t.Fatalf("the network probe is answered with a heartbeat: %v", ack)
+	}
+	recv, _ := ack["clientReceivedAtUnixMs"].(float64)
+	sent, _ := ack["clientSentAtUnixMs"].(float64)
+	if recv <= 0 || sent < recv {
+		t.Fatalf("times: received %v sent %v", recv, sent)
+	}
 
 	// game over: the result is read from the server
 	f.send(`{"type":"gameover","state":{"status":"over","score":120,"ack":4,"enemies":[]}}`)
@@ -391,5 +406,19 @@ func TestDialBuildsTheSocketAddressFromTheAPIBase(t *testing.T) {
 	}
 	if _, err := Dial(context.Background(), http.DefaultClient, "ftp://x/openapi/v1", "/live", "a", "r", nil); err == nil {
 		t.Fatal("a non-http base is refused")
+	}
+}
+
+// A frame must stay small: one escape code per blank cell made the terminal
+// lag and keys arrive in bursts (a run was flagged as automated input).
+func TestAFrameIsSmall(t *testing.T) {
+	m := &Model{g: Game{Mode: "en"}, width: 200, height: 50, run: Run{RunID: "r"}}
+	st := &State{Status: "playing", ActiveTargetID: json.RawMessage(`"e3"`)}
+	for i := 0; i < 15; i++ {
+		st.Enemies = append(st.Enemies, Enemy{ID: json.RawMessage(`"e` + string(rune('a'+i)) + `"`), X: float64(i) / 15, Y: float64(i%7) / 7, Glyphs: []int{3, 1, 20, 5, 9, 12}, TypedLength: i % 4})
+	}
+	m.state = st
+	if n := len(m.View()); n > 12000 {
+		t.Fatalf("a 200×50 frame with 15 planes is %d bytes", n)
 	}
 }

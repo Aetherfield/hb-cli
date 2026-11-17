@@ -424,28 +424,54 @@ func (m *Model) View() string {
 	return m.header() + "\n" + field + "\n" + foot
 }
 
+// The field is drawn as plain text with colour only where there is a word:
+// a cell carries a style number (0: none), and a row is written as runs of
+// one style. A frame is then a few kilobytes, not one escape code per blank
+// cell, which a terminal could not keep up with (keys then arrive in bursts).
+const (
+	stPlain = iota
+	stNormal
+	stTyped
+	stActive
+	stActiveTyped
+	stDying
+	stPlane
+)
+
+var styles = []lipgloss.Style{
+	stPlain:       lipgloss.NewStyle(),
+	stNormal:      normal,
+	stTyped:       typed,
+	stActive:      active,
+	stActiveTyped: active.Foreground(lipgloss.Color("10")),
+	stDying:       dying,
+	stPlane:       planeSt,
+}
+
 type cell struct {
 	s  string
-	st lipgloss.Style
-	w  int
+	st uint8
+	w  uint8 // 0: the second half of a wide character
 }
+
+var blank = cell{" ", stPlain, 1}
 
 // field draws the planes on a w×h grid, keeping the field's 480:720 proportion
 // only as far as the terminal allows (the words have to be readable).
 func (m *Model) field(w, h int) string {
-	grid := make([][]cell, h)
-	for i := range grid {
-		grid[i] = make([]cell, w)
-		for j := range grid[i] {
-			grid[i][j] = cell{" ", normal, 1}
-		}
-	}
 	if m.state == nil {
 		msg := "开局中…"
 		if m.run.RunID != "" {
 			msg = "连接对局…"
 		}
 		return center(msg, w, h)
+	}
+	grid := make([][]cell, h)
+	for i := range grid {
+		grid[i] = make([]cell, w)
+		for j := range grid[i] {
+			grid[i][j] = blank
+		}
 	}
 	enemies := append([]Enemy(nil), m.state.Enemies...)
 	// the target last, so it is drawn on top
@@ -459,18 +485,16 @@ func (m *Model) field(w, h int) string {
 			// a hidden name stays hidden
 			done, left = strings.Repeat("?", len([]rune(done))), strings.Repeat("?", len([]rune(left)))
 		}
-		text := done + left
-		tw := runewidth.StringWidth(text) + 2
+		tw := runewidth.StringWidth(done+left) + 2
 		col := clampInt(int(e.X*float64(w-1)+0.5)-tw/2, 0, max(0, w-tw))
-		isActive := SameID(e.ID, m.state.ActiveTargetID)
-		st, dst := normal, typed
+		st, dst := uint8(stNormal), uint8(stTyped)
 		switch {
 		case e.Dying:
-			st, dst = dying, dying
-		case isActive:
-			st, dst = active, active.Foreground(lipgloss.Color("10"))
+			st, dst = stDying, stDying
+		case SameID(e.ID, m.state.ActiveTargetID):
+			st, dst = stActive, stActiveTyped
 		}
-		put(grid[row], col, "✈", planeSt)
+		put(grid[row], col, "✈", stPlane)
 		c := col + 2
 		for _, r := range done {
 			c = put(grid[row], c, string(r), dst)
@@ -480,13 +504,36 @@ func (m *Model) field(w, h int) string {
 		}
 	}
 	var b strings.Builder
+	var run strings.Builder
 	for i, row := range grid {
-		for _, c := range row {
+		// no trailing blanks: the renderer clears the rest of the line
+		end := len(row)
+		for end > 0 && row[end-1] == blank {
+			end--
+		}
+		cur := uint8(stPlain)
+		flush := func() {
+			if run.Len() == 0 {
+				return
+			}
+			if cur == stPlain {
+				b.WriteString(run.String())
+			} else {
+				b.WriteString(styles[cur].Render(run.String()))
+			}
+			run.Reset()
+		}
+		for _, c := range row[:end] {
 			if c.w == 0 {
 				continue
 			}
-			b.WriteString(c.st.Render(c.s))
+			if c.st != cur {
+				flush()
+				cur = c.st
+			}
+			run.WriteString(c.s)
 		}
+		flush()
 		if i < len(grid)-1 {
 			b.WriteByte('\n')
 		}
@@ -495,19 +542,19 @@ func (m *Model) field(w, h int) string {
 }
 
 // put writes one character at col (a wide one takes two cells) and returns the next column.
-func put(row []cell, col int, s string, st lipgloss.Style) int {
+func put(row []cell, col int, s string, st uint8) int {
 	w := runewidth.StringWidth(s)
 	if col < 0 || col+w > len(row) {
 		return col + w
 	}
 	// do not cut a wide character in half
 	if row[col].w == 0 && col > 0 {
-		row[col-1] = cell{" ", normal, 1}
+		row[col-1] = blank
 	}
 	if w == 2 && col+2 < len(row) && row[col+1].w == 2 {
-		row[col+2] = cell{" ", normal, 1}
+		row[col+2] = blank
 	}
-	row[col] = cell{s, st, w}
+	row[col] = cell{s, st, uint8(w)}
 	for k := 1; k < w; k++ {
 		row[col+k] = cell{"", st, 0}
 	}
