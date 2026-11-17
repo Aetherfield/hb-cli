@@ -54,6 +54,8 @@ profile 到调试窗口；Chromium 系要先关浏览器，Firefox 系直接读 
 `clean`（独立的干净浏览器，登录一次）、`token`（粘贴你在网页「我的 → 个人令牌」创建的 `hbp_…` 令牌，不用浏览器，
 也不用 cookie）。不确定就直接运行，它会问。
 
+`ext` 用的浏览器扩展 hb session bridge 放在单独的仓库：[Aetherfield/hb-session-bridge](https://github.com/Aetherfield/hb-session-bridge)。可以从它的 Releases 下载 zip、解压后在浏览器里「加载已解压的扩展程序」；也可以加 `--download-ext`，让 hb 下载它固定的那个版本，核对 SHA-256 后解压到配置目录。扩展只和本机 `127.0.0.1` 上正在等待的 hb 通信，每次都要输入终端里显示的 6 位配对码。
+
 用令牌登录前，先在网页「我的 → 个人令牌」创建一个（任何登录用户都能建，只显示一次）。用令牌要知道几件事（lafish 定的，
 见 [LeUKi/hb 的设计文档](https://github.com/LeUKi/hb/blob/main/docs/personal-token-design.md) 第 8 节）：
 

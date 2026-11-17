@@ -67,6 +67,7 @@ func newLoginCmd() *cobra.Command {
 	f.StringVar(&o.fromProfile, "from-profile", "Default", "clone: browser profile directory name to copy")
 	f.BoolVar(&o.keepClone, "keep-clone", false, "clone: keep the copied profile afterwards (default: delete it)")
 	f.DurationVar(&o.timeout, "timeout", 5*time.Minute, "how long to wait for you to finish logging in")
+	f.BoolVar(&o.downloadExt, "download-ext", false, "ext: download the pinned hb session bridge release and check its SHA-256")
 	f.BoolVar(&o.tokenStdin, "token-stdin", false, "sites with a personal token (lafish, unsnow): read it from stdin instead of asking")
 	return cmd
 }
@@ -78,6 +79,7 @@ type loginOpts struct {
 	keepClone   bool
 	timeout     time.Duration
 	tokenStdin  bool
+	downloadExt bool
 }
 
 func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
@@ -134,7 +136,7 @@ func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
 	case methodToken:
 		s, err = loginToken(cmd, p, *spec.Token, o.tokenStdin)
 	case methodExt:
-		s, err = loginExt(ctx, cmd, p)
+		s, err = loginExt(ctx, cmd, p, o)
 	case methodClone:
 		s, err = loginClone(ctx, cmd, p, o)
 	case methodPaste:
@@ -176,14 +178,21 @@ func finishLogin(ctx context.Context, cmd *cobra.Command, p provider.Provider, p
 }
 
 // loginExt: pair with the MV3 extension running in the everyday browser.
-func loginExt(ctx context.Context, cmd *cobra.Command, p provider.Provider) (auth.Session, error) {
+func loginExt(ctx context.Context, cmd *cobra.Command, p provider.Provider, o loginOpts) (auth.Session, error) {
 	home, err := store.Home()
 	if err != nil {
 		return auth.Session{}, err
 	}
-	dir, err := ext.Extract(home)
-	if err != nil {
-		return auth.Session{}, err
+	w := cmd.ErrOrStderr()
+	if o.downloadExt {
+		fmt.Fprintln(w, i18n.T("login.ext.downloading", ext.BridgeVersion, ext.BridgeZipURL()))
+		dir, err := ext.Download(ctx, nil, ext.BridgeZipURL(), ext.BridgeSHA256, home)
+		if err != nil {
+			return auth.Session{}, err
+		}
+		fmt.Fprintln(w, i18n.T("login.ext.install", dir))
+	} else {
+		fmt.Fprintln(w, i18n.T("login.ext.get", ext.BridgeReleases, ext.BridgeVersion))
 	}
 	ln, err := ext.Listen()
 	if err != nil {
@@ -198,8 +207,6 @@ func loginExt(ctx context.Context, cmd *cobra.Command, p provider.Provider) (aut
 	go func() { _ = srv.Serve(ln) }()
 	defer srv.Close()
 
-	w := cmd.ErrOrStderr()
-	fmt.Fprintln(w, i18n.T("login.ext.install", dir))
 	fmt.Fprintln(w, i18n.T("login.ext.code", p.Name(), pr.Code()))
 	return pr.Wait(ctx)
 }

@@ -1,24 +1,22 @@
-// Package ext is the local pairing server for the MV3 browser extension: the
-// extension reads your already-logged-in cookies in your everyday browser and
-// posts them to 127.0.0.1, guarded by a one-time pairing code.
+// Package ext is the local pairing server for the MV3 browser extension (hb
+// session bridge, its own repository: see download.go): the extension reads
+// your already-logged-in cookies in your everyday browser and posts them to
+// 127.0.0.1, guarded by a one-time pairing code. The protocol is written down
+// in that repository's PROTOCOL.md.
 package ext
 
 import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"math/big"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -26,29 +24,6 @@ import (
 	"hb/internal/auth"
 	"hb/internal/provider"
 )
-
-//go:embed extension
-var files embed.FS
-
-// Extract writes the embedded extension to <dir>/extension and returns that path.
-func Extract(dir string) (string, error) {
-	dst := filepath.Join(dir, "extension")
-	err := fs.WalkDir(files, "extension", func(p string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		out := filepath.Join(dir, filepath.FromSlash(p))
-		if d.IsDir() {
-			return os.MkdirAll(out, 0o755)
-		}
-		b, err := files.ReadFile(p)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(out, b, 0o644)
-	})
-	return dst, err
-}
 
 const (
 	FirstPort   = 47321

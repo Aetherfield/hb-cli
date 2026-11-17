@@ -1,11 +1,16 @@
 package ext
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -114,13 +119,70 @@ func TestLockoutAfterBadCodes(t *testing.T) {
 	}
 }
 
-func TestExtractWritesManifest(t *testing.T) {
-	dir, err := Extract(t.TempDir())
+func zipOf(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, body := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = w.Write([]byte(body))
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func serve(t *testing.T, b []byte) string {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write(b) }))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/x.zip"
+}
+
+func sumOf(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
+func TestDownloadChecksTheHashAndUnpacks(t *testing.T) {
+	z := zipOf(t, map[string]string{"manifest.json": `{"manifest_version":3}`, "icons/16.png": "png"})
+	dir := t.TempDir()
+	got, err := Download(context.Background(), nil, serve(t, z), sumOf(z), dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := files.ReadFile("extension/manifest.json"); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(got, "icons", "16.png")); err != nil {
+		t.Fatalf("unpacked: %v", err)
 	}
-	_ = dir
+	// a wrong hash: nothing is unpacked
+	dir2 := t.TempDir()
+	if _, err := Download(context.Background(), nil, serve(t, z), strings.Repeat("0", 64), dir2); err == nil || !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("hash mismatch: %v", err)
+	}
+	if entries, _ := os.ReadDir(dir2); len(entries) != 0 {
+		t.Fatal("nothing may be written when the hash is wrong")
+	}
+}
+
+func TestDownloadRefusesPathsOutsideItsFolder(t *testing.T) {
+	for _, bad := range []string{"../evil.js", "a/../../evil.js", "/abs.js", "C:/x.js"} {
+		z := zipOf(t, map[string]string{"manifest.json": "{}", bad: "x"})
+		dir := t.TempDir()
+		if _, err := Download(context.Background(), nil, serve(t, z), sumOf(z), dir); err == nil {
+			t.Errorf("%q must be refused", bad)
+		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "evil.js")); err == nil {
+			t.Errorf("%q escaped the folder", bad)
+		}
+	}
+}
+
+func TestThePinnedReleaseAddressIsThisVersion(t *testing.T) {
+	u := BridgeZipURL()
+	if !strings.HasPrefix(u, BridgeRepo+"/releases/download/v"+BridgeVersion+"/") || len(BridgeSHA256) != 64 {
+		t.Fatal(u)
+	}
 }
