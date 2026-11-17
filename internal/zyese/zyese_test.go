@@ -422,3 +422,23 @@ func TestAFrameIsSmall(t *testing.T) {
 		t.Fatalf("a 200×50 frame with 15 planes is %d bytes", n)
 	}
 }
+
+func TestAClockBehindTheServerIsSaid(t *testing.T) {
+	if clockWarning(1794914308349, 1794914307555) == "" {
+		t.Fatal("arriving 0.8 s before it was sent: the clock is behind")
+	}
+	if clockWarning(1794914308349, 1794914308420) != "" {
+		t.Fatal("a normal delay is no warning")
+	}
+	if clockWarning(0, 5) != "" {
+		t.Fatal("no server time, no warning")
+	}
+}
+
+func TestGivingUpIsNotTakenForADrop(t *testing.T) {
+	m := &Model{run: Run{RunID: "r"}, quitting: true, ready: true}
+	m.Update(liveEndMsg{nil, context.Canceled})
+	if m.err != nil || strings.Contains(m.notice, "context") {
+		t.Fatalf("err=%v notice=%q", m.err, m.notice)
+	}
+}

@@ -112,7 +112,10 @@ type Msg struct {
 		ID                 int64   `json:"id"`
 		ServerSentAtUnixMs float64 `json:"serverSentAtUnixMs"`
 	} `json:"networkProbe"`
-	Raw json.RawMessage `json:"-"`
+	ServerTime float64 `json:"serverTime"`
+	// ReceivedAt is when it arrived here (wall clock, ms).
+	ReceivedAt float64         `json:"-"`
+	Raw        json.RawMessage `json:"-"`
 }
 
 // ---- the keys typed ----
@@ -297,7 +300,7 @@ func (c *Conn) read(ctx context.Context) {
 			c.probe = &probeAck{ID: p.ID, ServerSentAtUnixMs: p.ServerSentAtUnixMs, ClientReceivedAtUnixMs: got}
 			c.pmu.Unlock()
 		}
-		m.Raw = b
+		m.Raw, m.ReceivedAt = b, got
 		select {
 		case c.Msgs <- m:
 		case <-ctx.Done():

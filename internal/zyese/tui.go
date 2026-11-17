@@ -68,6 +68,8 @@ type Model struct {
 	lostAt     time.Time
 	notice     string
 	quitArmed  bool
+	quitting   bool // giving the run up: the connection closing is expected, not a drop
+	clockWarn  string
 	err        error
 
 	width, height int
@@ -138,12 +140,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, wait(msg.c)
 	case liveEndMsg:
-		if msg.c != nil && msg.c != m.conn {
+		if m.quitting || (msg.c != nil && msg.c != m.conn) {
 			return m, nil
 		}
 		return m, m.lost(msg.err)
 	case reconnectMsg:
-		if m.over || m.err != nil {
+		if m.over || m.err != nil || m.quitting {
 			return m, nil
 		}
 		m.notice = "重新连接中…"
@@ -163,6 +165,7 @@ func (m *Model) handle(msg Msg) {
 	switch msg.Type {
 	case "ready":
 		m.ready, m.everReady = true, true
+		m.clockWarn = clockWarning(msg.ServerTime, msg.ReceivedAt)
 		if msg.State != nil {
 			m.state = msg.State
 			m.inputs.Ack(msg.State.Ack)
@@ -241,6 +244,19 @@ func (m *Model) lost(err error) tea.Cmd {
 	return tea.Tick(2*time.Second, func(time.Time) tea.Msg { return reconnectMsg{} })
 }
 
+// clockWarning: a message cannot arrive before the server sent it, so when it
+// seems to, this machine's clock is behind. The server's network probes then
+// read as a broken connection and it pauses the run.
+func clockWarning(serverTime, receivedAt float64) string {
+	if serverTime <= 0 || receivedAt <= 0 {
+		return ""
+	}
+	if behind := serverTime - receivedAt; behind > 200 {
+		return fmt.Sprintf("本机时钟比服务器慢约 %.1f 秒，服务器会把这当成网络异常、暂停对局。先同步系统时间（Windows：设置 → 时间和语言 → 立即同步），再开新局。", behind/1000)
+	}
+	return ""
+}
+
 func errText(err error) string {
 	if err == nil {
 		return "已关闭"
@@ -288,6 +304,8 @@ func (m *Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		run := m.run
+		m.quitting = true
+		m.notice = "正在放弃这局…"
 		if m.conn != nil {
 			m.conn.Close()
 		}
@@ -416,8 +434,12 @@ func (m *Model) View() string {
 	}
 	h := max(6, m.height-3)
 	w := max(20, m.width)
-	field := m.field(w, h)
 	foot := dim.Render("敲键盘打下飞机 · Esc 暂停 · Ctrl+C 两次放弃")
+	if m.clockWarn != "" {
+		foot = errSt.Render(m.clockWarn) + "\n" + foot
+		h = max(6, h-1-lipgloss.Height(lipgloss.NewStyle().Width(w).Render(m.clockWarn))+1)
+	}
+	field := m.field(w, h)
 	if m.notice != "" {
 		foot = warnSt.Render(m.notice) + "  " + foot
 	}
