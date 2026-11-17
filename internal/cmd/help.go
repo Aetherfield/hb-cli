@@ -98,6 +98,13 @@ var shorts = map[string]string{
 	"hb unsnow me":       "令牌属于谁，口令查错次数和验证状态",
 	"hb unsnow sent":     "我发出的红包",
 	"hb unsnow received": "我已到账的红包",
+	"hb zyese":           "打飞机打字游戏（Luminet OpenAPI）",
+	"hb zyese login":     "在浏览器里登录 Luminet Auth",
+	"hb zyese logout":    "删掉本机保存的打飞机令牌",
+	"hb zyese me":        "我是谁、应用是否获准、能玩哪些模式",
+	"hb zyese stats":     "我的战绩",
+	"hb zyese rank":      "排行榜（默认今天、英文）",
+	"hb zyese play":      "开一局（全屏）",
 	"hb help":            "查看某个命令的帮助",
 	"hb completion":      "生成命令补全脚本（niu、bash、zsh、fish 等）",
 }
@@ -107,13 +114,14 @@ var groups = []struct{ id, title string }{
 	{"account", "账号"},
 	{"lafish", "lafish（hb.lafi.sh）"},
 	{"unsnow", "Unsnow（hb.unsnow.org）"},
+	{"zyese", "打飞机（zyese.xyz）"},
 	{"ai", "AI 助手"},
 }
 
 var groupOf = map[string]string{
 	"login": "account", "logout": "account", "whoami": "account",
 	"play": "lafish", "kddb": "lafish", "assets": "lafish", "hints": "lafish",
-	"unsnow": "unsnow", "mcp": "ai",
+	"unsnow": "unsnow", "zyese": "zyese", "mcp": "ai",
 }
 
 // polish gives the whole tree its help screens: the template, the groups, one
@@ -144,8 +152,8 @@ func polish(root *cobra.Command) {
 			c.Short = s
 		}
 		c.InitDefaultHelpFlag()
-		c.Flags().VisitAll(localize)
-		c.PersistentFlags().VisitAll(localize)
+		c.Flags().VisitAll(localizeFor(c))
+		c.PersistentFlags().VisitAll(localizeFor(c))
 		for _, sub := range c.Commands() {
 			walk(sub)
 		}
@@ -161,5 +169,21 @@ func polish(root *cobra.Command) {
 func localize(f *pflag.Flag) {
 	if u, ok := flagUsage[f.Name]; ok {
 		f.Usage = u
+	}
+}
+
+// flagUsageFor is a flag's line for one command, where the same name means
+// something else elsewhere (--mode).
+var flagUsageFor = map[string]map[string]string{
+	"hb zyese play": {"mode": "模式：en 英文 | zh 中文 | ja 日文", "trace": "把服务器发来的每条消息记到这个文件（排查用；不含令牌）"},
+	"hb zyese rank": {"mode": "模式：en 英文 | zh 中文 | ja 日文"},
+}
+
+func localizeFor(c *cobra.Command) func(*pflag.Flag) {
+	return func(f *pflag.Flag) {
+		localize(f)
+		if u, ok := flagUsageFor[c.CommandPath()][f.Name]; ok {
+			f.Usage = u
+		}
 	}
 }

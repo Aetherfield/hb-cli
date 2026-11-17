@@ -45,8 +45,13 @@ type Session struct {
 	// Token is a site's own personal token (Authorization: Bearer), for sites
 	// that issue one (Unsnow's CLI API). With a token, no cookie or browser
 	// User-Agent is sent.
-	Token   string    `json:"token,omitempty"`
-	SavedAt time.Time `json:"saved_at"`
+	Token string `json:"token,omitempty"`
+	// Refresh and TokenExpiry are for sites that sign in through OAuth (the
+	// 打飞机 OpenAPI): Token is then a short-lived access token, renewed with
+	// Refresh before TokenExpiry. Refresh is only ever sent to the IdP.
+	Refresh     string    `json:"refresh,omitempty"`
+	TokenExpiry time.Time `json:"token_expiry,omitempty"`
+	SavedAt     time.Time `json:"saved_at"`
 }
 
 func key(profile, provider string) string { return profile + ":" + provider }

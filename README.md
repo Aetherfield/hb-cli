@@ -95,6 +95,25 @@ hb unsnow received              # 我已到账的红包
 
 触发口令验证（403）时 `hb` 会给出验证链接并停下；遇到 429 会说明要等几秒；任何错误都不会重试。
 
+### 打飞机（zyese.xyz）
+
+[打飞机](https://zyese.xyz) 是一个打字游戏。Luminet 为 hb 开了 OpenAPI，并登记了一个应用（`client_id` 写在 `internal/zyese/oidc.go`）。
+
+```sh
+hb zyese login              # 浏览器里登录 Luminet Auth（授权码 + PKCE，回调 http://localhost:1423/callback）
+hb zyese me                 # 我是谁、应用是否获准、能玩哪些模式
+hb zyese stats              # 我的战绩
+hb zyese rank [daily|yesterday|all-time] --mode en|zh|ja
+hb zyese play --mode en     # 全屏开一局；Esc 暂停，Ctrl+C 按两次放弃
+hb zyese logout
+```
+
+- 要先把 Luminet 账号绑定 LINUX DO，并且在 zyese.xyz 用 LINUX DO 登录过一次。少了哪一步，hb 会直接告诉你去哪里补。
+- 游戏在服务器上跑，hb 只把你敲的每个字符转发过去。中文、日文模式下，输入法上屏的每个字各算一个键。
+- hb 不代打，不接受粘贴，不伪造按键时间，也不上报分数。成绩进网站的共享排行榜，标记为第三方应用。
+- 访问令牌和刷新令牌存在系统凭据库里，快到期时自动刷新；刷新失败就删掉，要你重新登录。
+- 断线后会在约两分钟内用同一局重连，没确认的按键按原序号重发。
+
 ## 命令
 
 | 命令 | 作用 |
@@ -106,6 +125,7 @@ hb unsnow received              # 我已到账的红包
 | `hb hints report` | 读 `--hints-log` 的日志，看建议准不准 |
 | `hb assets fetch\|check\|clean` | 取、核对、删除 Minecraft 图标 |
 | `hb unsnow me\|check\|plaza\|sent\|received` | Unsnow 的只读查询 |
+| `hb zyese login\|me\|stats\|rank\|play\|logout` | 打飞机打字游戏（Luminet OpenAPI） |
 | `hb doctor` | 检查配置、浏览器、网络可达和时钟 |
 
 全局选项：`--json`（输出 JSON，键名始终是英文，不含密钥）、`--profile <名>`。`hb <命令> --help` 有每个命令的详细说明。
