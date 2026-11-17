@@ -40,7 +40,7 @@ func profileName() (string, error) {
 // Login methods.
 const (
 	methodExt   = "ext"   // MV3 extension in your everyday browser
-	methodClone = "clone" // copy everyday profile, open it with a debug port
+	methodClone = "clone" // deprecated: copy everyday profile, open it with a debug port (app-bound encryption defeats it on recent Chromium)
 	methodPaste = "paste" // paste the cookie by hand
 	methodClean = "clean" // dedicated empty profile, log in once
 	methodToken = "token" // the site's own personal token, pasted
@@ -116,13 +116,13 @@ func runLogin(cmd *cobra.Command, name string, o loginOpts) error {
 	if o.method == "" {
 		methods := []choice{
 			{i18n.T("login.m.ext"), methodExt},
-			{i18n.T("login.m.clone"), methodClone},
 			{i18n.T("login.m.paste"), methodPaste},
 			{i18n.T("login.m.clean"), methodClean},
 		}
 		if spec.Token != nil {
-			methods = append(methods, choice{i18n.T("login.m.token"), methodToken})
+			methods = append([]choice{{i18n.T("login.m.token"), methodToken}}, methods...)
 		}
+		methods = append(methods, choice{i18n.T("login.m.clone"), methodClone}) // deprecated: last
 		if o.method, err = selectOne(i18n.T("login.pick.method"), methods); err != nil {
 			if errors.Is(err, ErrNotInteractive) {
 				return errors.New("pass --method ext|clone|paste|clean|token (no interactive terminal)")
@@ -243,6 +243,7 @@ func loginClone(ctx context.Context, cmd *cobra.Command, p provider.Provider, o 
 	if b.Kind.Family == browser.Gecko {
 		return loginGecko(cmd, p, b)
 	}
+	fmt.Fprintln(cmd.ErrOrStderr(), ui.For(cmd.ErrOrStderr()).Warn(i18n.T("login.clone.deprecated")))
 	exe := b.Exe
 	ud, err := browser.UserDataDir(b.Kind)
 	if err != nil {

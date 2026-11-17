@@ -55,8 +55,12 @@ var catalog = map[string]map[Lang]string{
 		EN: "Browser extension — reuse your everyday browser's login (recommended, install once)",
 	},
 	"login.m.clone": {
-		ZH: "读取日常浏览器登录 — Chromium 系复制 profile 到调试窗口（需先关浏览器）；Firefox 系直接读 cookie",
-		EN: "Take login from everyday browser — Chromium: copy profile into a debug window (close it first); Firefox: read cookies directly",
+		ZH: "[已弃用] 复制日常浏览器的 profile — 新版 Chrome/Edge 的应用绑定加密让副本读不到登录；Firefox 系仍可用",
+		EN: "[deprecated] Copy the everyday browser's profile — app-bound encryption in recent Chrome/Edge keeps the copy from reading the login; Firefox still works",
+	},
+	"login.clone.deprecated": {
+		ZH: "clone 已弃用：新版 Chrome / Edge 用「应用绑定加密」保存 cookie，复制出来的 profile 读不到登录，只能在弹出的窗口里重新登录一次。\n  建议改用 --method token（个人令牌）或 --method ext（浏览器扩展）；要一个能留下来的独立浏览器就用 --method clean。Firefox 系不受影响。",
+		EN: "clone is deprecated: recent Chrome / Edge store cookies under app-bound encryption, so a copied profile cannot read the login and you have to log in again in the window that opens.\n  Use --method token (personal token) or --method ext (browser extension); for a browser of its own that stays, --method clean. Firefox is not affected.",
 	},
 	"login.m.paste": {
 		ZH: "手动粘贴 cookie",

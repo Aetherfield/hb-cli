@@ -61,7 +61,7 @@ var flagUsage = map[string]string{
 	"version":         "显示版本",
 	"json":            "输出 JSON（键名始终是英文，不含密钥）",
 	"profile":         "账号档案名（默认用配置里的 default_profile）",
-	"method":          "登录方式：ext | clone | paste | clean | token（默认询问）",
+	"method":          "登录方式：token | ext | paste | clean（默认询问）；clone 已弃用（新版 Chrome/Edge 读不到）",
 	"from-profile":    "clone：要复制的浏览器 profile 目录名（默认 Default）；只写 --from-profile 不带值，会列出这个浏览器的 profile 让你选",
 	"keep-clone":      "clone：用完保留复制出的 profile（默认删除）",
 	"timeout":         "等你完成登录的最长时间",

@@ -49,10 +49,9 @@ hb whoami              # 看各站点现在登录的是谁
 hb play <红包链接|id>   # 认出矿洞夺宝就进终端游戏；否则看文字信息
 ```
 
-`hb login` 的五种方式：`ext`（浏览器扩展，用你日常浏览器里已有的登录，装一次）、`clone`（复制日常浏览器的
-profile 到调试窗口；Chromium 系要先关浏览器，Firefox 系直接读 cookie）、`paste`（手动粘贴 cookie）、
-`clean`（独立的干净浏览器，登录一次）、`token`（粘贴你在网页「我的 → 个人令牌」创建的 `hbp_…` 令牌，不用浏览器，
-也不用 cookie）。不确定就直接运行，它会问。
+`hb login` 的方式：`token`（粘贴你在网页「我的 → 个人令牌」创建的 `hbp_…` 令牌，不用浏览器，也不用 cookie，推荐）、`ext`（浏览器扩展，用你日常浏览器里已有的登录，装一次）、`paste`（手动粘贴 cookie）、`clean`（独立的干净浏览器，登录一次）。不确定就直接运行，它会问。
+
+`clone`（复制日常浏览器的 profile）**已弃用**：新版 Chrome / Edge 用「应用绑定加密」保存 cookie，复制出来的 profile 读不到登录，只能在弹出的窗口里重新登录，不如直接用 `clean`。Firefox 系不受影响，所以还留着，但不再推荐（见 #16）。
 
 `ext` 用的浏览器扩展 hb session bridge 放在单独的仓库：[Aetherfield/hb-session-bridge](https://github.com/Aetherfield/hb-session-bridge)。运行 `hb login <站点> --method ext` 时，hb 会自己下载它固定的那个版本，核对 SHA-256，解压到配置目录，再告诉你在浏览器里「加载已解压的扩展程序」时选哪个目录；解压过同一个版本就直接用。自己下载了 zip 的话，用 `--ext-zip <文件>` 交给 hb 核对并解压；`--download-ext` 强制重新下载。扩展只和本机 `127.0.0.1` 上正在等待的 hb 通信，每次都要输入终端里显示的 6 位配对码。
 

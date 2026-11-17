@@ -118,11 +118,11 @@ func addCompletions(root *cobra.Command) {
 		}
 	}
 	reg(find("login"), "method", choices(
+		"token", "个人令牌",
 		"ext", "浏览器扩展：用日常浏览器里已有的登录",
-		"clone", "复制日常浏览器的 profile",
 		"paste", "手动粘贴 cookie",
 		"clean", "独立的干净浏览器",
-		"token", "个人令牌",
+		"clone", "已弃用：复制日常浏览器的 profile（新版 Chrome/Edge 读不到）",
 	))
 	reg(find("login"), "browser", func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
 		var out []cobra.Completion
