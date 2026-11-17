@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"io"
 	"regexp"
 	"strings"
 	"testing"
@@ -78,5 +79,16 @@ func TestASubcommandHelpHasItsOwnOptions(t *testing.T) {
 		if !strings.Contains(h, want) {
 			t.Errorf("lacks %q:\n%s", want, h)
 		}
+	}
+}
+
+func TestOptionErrorsAreInChinese(t *testing.T) {
+	root := NewRoot()
+	root.SetArgs([]string{"login", "--timeout"})
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "选项 --timeout 后面要跟一个值") || !strings.Contains(err.Error(), "hb login --help") {
+		t.Fatalf("%v", err)
 	}
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -61,7 +62,7 @@ var flagUsage = map[string]string{
 	"json":            "输出 JSON（键名始终是英文，不含密钥）",
 	"profile":         "账号档案名（默认用配置里的 default_profile）",
 	"method":          "登录方式：ext | clone | paste | clean | token（默认询问）",
-	"from-profile":    "clone：要复制的浏览器 profile 目录名",
+	"from-profile":    "clone：要复制的浏览器 profile 目录名（默认 Default）；只写 --from-profile 不带值，会列出这个浏览器的 profile 让你选",
 	"keep-clone":      "clone：用完保留复制出的 profile（默认删除）",
 	"timeout":         "等你完成登录的最长时间",
 	"token-stdin":     "有个人令牌的站点（lafish、unsnow）：从标准输入读令牌，不再询问",
@@ -126,6 +127,27 @@ var groupOf = map[string]string{
 	"unsnow": "unsnow", "zyese": "zyese", "mcp": "ai",
 }
 
+// flagError says what was wrong with the options, in Chinese, and where the
+// help is.
+func flagError(c *cobra.Command, err error) error {
+	msg := err.Error()
+	for _, t := range []struct{ prefix, zh string }{
+		{"flag needs an argument: ", "选项 %s 后面要跟一个值"},
+		{"unknown flag: ", "没有这个选项：%s"},
+		{"unknown shorthand flag: ", "没有这个短选项：%s"},
+		{"bad flag syntax: ", "选项写法不对：%s"},
+	} {
+		if strings.HasPrefix(msg, t.prefix) {
+			msg = fmt.Sprintf(t.zh, strings.TrimPrefix(msg, t.prefix))
+			break
+		}
+	}
+	if strings.HasPrefix(msg, "invalid argument ") {
+		msg = "选项的值不对：" + strings.TrimPrefix(msg, "invalid argument ")
+	}
+	return fmt.Errorf("%s（用法见 %s --help）", msg, c.CommandPath())
+}
+
 // polish gives the whole tree its help screens: the template, the groups, one
 // line per command, and Chinese for the options and the commands cobra adds.
 func polish(root *cobra.Command) {
@@ -135,6 +157,7 @@ func polish(root *cobra.Command) {
 	for _, g := range groups {
 		root.AddGroup(&cobra.Group{ID: g.id, Title: g.title})
 	}
+	root.SetFlagErrorFunc(flagError)
 	if c, _, err := root.Find([]string{"completion"}); err == nil && c.Name() == "completion" {
 		c.Long = "生成命令补全脚本，让 Tab 能补全 hb 的命令、选项和站点名。\n用哪个 shell 就看对应子命令的说明；niubash 用 niu。"
 		c.AddCommand(newCompletionNiuCmd())

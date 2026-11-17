@@ -1,11 +1,13 @@
 package browser
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -22,6 +24,9 @@ func UserDataDir(k Kind) (string, error) {
 	return d, nil
 }
 
+// ErrNoProfile: the profile asked for is not in this browser.
+var ErrNoProfile = errors.New("no such profile")
+
 // CloneProfile copies just the files that carry a login (Local State holds
 // the cookie-encryption key material; Network/Cookies holds the cookies) from
 // the everyday browser's profile into dst, so it can be opened with a
@@ -37,6 +42,15 @@ func CloneProfile(userData, profile, dst string) error {
 		{filepath.Join(src, "Network", "Cookies-journal"), filepath.Join(dst, "Default", "Network", "Cookies-journal")},
 		{filepath.Join(src, "Preferences"), filepath.Join(dst, "Default", "Preferences")},
 	}
+	if _, err := os.Stat(filepath.Join(src, "Network", "Cookies")); errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%w: %s", ErrNoProfile, profile)
+	}
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.RemoveAll(dst) // never leave a half copy (Local State holds key material) behind
+		}
+	}()
 	for i, p := range pairs {
 		err := copyFile(p.from, p.to)
 		if errors.Is(err, os.ErrNotExist) && i >= 2 { // journal/preferences are optional
@@ -44,11 +58,12 @@ func CloneProfile(userData, profile, dst string) error {
 		}
 		if err != nil {
 			if isLocked(err) {
-				return fmt.Errorf("cannot read %s: the browser is still running; close ALL its windows (check the tray) and retry", p.from)
+				return fmt.Errorf("读不了 %s：浏览器还开着。把它所有窗口都关掉，托盘里也看一下；Edge 还要关掉「启动增强」和「关闭后继续运行后台扩展和应用」（设置 → 系统和性能），或者在任务管理器里结束所有 msedge.exe，再试", p.from)
 			}
 			return fmt.Errorf("copy %s: %w", p.from, err)
 		}
 	}
+	ok = true
 	return nil
 }
 
@@ -75,4 +90,45 @@ func copyFile(from, to string) error {
 		return err
 	}
 	return out.Close()
+}
+
+// Profile is one profile of a Chromium-family browser: its directory name
+// (what --from-profile takes) and the name the browser shows for it.
+type Profile struct {
+	Dir  string
+	Name string
+}
+
+// Profiles lists the profiles in a user data dir, from Local State's
+// profile.info_cache, keeping only those whose folder exists. The default
+// profile comes first, then by directory name.
+func Profiles(userData string) ([]Profile, error) {
+	b, err := os.ReadFile(filepath.Join(userData, "Local State"))
+	if err != nil {
+		return nil, err
+	}
+	var ls struct {
+		Profile struct {
+			InfoCache map[string]struct {
+				Name string `json:"name"`
+			} `json:"info_cache"`
+		} `json:"profile"`
+	}
+	if err := json.Unmarshal(b, &ls); err != nil {
+		return nil, fmt.Errorf("Local State: %w", err)
+	}
+	var out []Profile
+	for dir, info := range ls.Profile.InfoCache {
+		if st, err := os.Stat(filepath.Join(userData, dir)); err != nil || !st.IsDir() {
+			continue
+		}
+		out = append(out, Profile{Dir: dir, Name: info.Name})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if (out[i].Dir == "Default") != (out[j].Dir == "Default") {
+			return out[i].Dir == "Default"
+		}
+		return out[i].Dir < out[j].Dir
+	})
+	return out, nil
 }

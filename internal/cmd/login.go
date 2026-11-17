@@ -65,6 +65,7 @@ func newLoginCmd() *cobra.Command {
 	f.StringVar(&o.browserSpec, "browser", "",
 		"浏览器："+browser.KindIDs()+"，或 exe 路径（默认用系统默认浏览器，或 $HB_BROWSER）")
 	f.StringVar(&o.fromProfile, "from-profile", "Default", "clone: browser profile directory name to copy")
+	f.Lookup("from-profile").NoOptDefVal = askProfile // a bare --from-profile lists them and asks
 	f.BoolVar(&o.keepClone, "keep-clone", false, "clone: keep the copied profile afterwards (default: delete it)")
 	f.DurationVar(&o.timeout, "timeout", 5*time.Minute, "how long to wait for you to finish logging in")
 	f.BoolVar(&o.downloadExt, "download-ext", false, "ext: download the pinned hb session bridge release again, even if it is already unpacked")
@@ -247,16 +248,65 @@ func loginClone(ctx context.Context, cmd *cobra.Command, p provider.Provider, o 
 	if err != nil {
 		return auth.Session{}, err
 	}
+	if o.fromProfile == askProfile {
+		if o.fromProfile, err = pickProfile(b.Kind.Name, ud); err != nil {
+			return auth.Session{}, err
+		}
+	}
 	dst := filepath.Join(home, "browser-clone")
 	w := cmd.ErrOrStderr()
 	fmt.Fprintln(w, i18n.T("login.clone.warn", dst))
 	if err := browser.CloneProfile(ud, o.fromProfile, dst); err != nil {
+		if errors.Is(err, browser.ErrNoProfile) {
+			return auth.Session{}, fmt.Errorf("%s 里没有叫 %q 的 profile。%s", b.Kind.Name, o.fromProfile, profileList(ud))
+		}
 		return auth.Session{}, err
 	}
 	if !o.keepClone {
 		defer os.RemoveAll(dst)
 	}
 	return browserLogin(ctx, w, exe, dst, p)
+}
+
+// askProfile is what a bare --from-profile stands for: list the profiles and ask.
+const askProfile = "?"
+
+// profileList says which profiles there are, for an error.
+func profileList(userData string) string {
+	ps, err := browser.Profiles(userData)
+	if err != nil || len(ps) == 0 {
+		return "用 --from-profile 加 profile 的目录名（比如 Default、Profile 1）"
+	}
+	var b strings.Builder
+	b.WriteString("有这些（--from-profile 后面写目录名）：")
+	for _, p := range ps {
+		fmt.Fprintf(&b, "\n  %-12s %s", p.Dir, p.Name)
+	}
+	return b.String()
+}
+
+// pickProfile lists the browser's profiles and asks which one to copy.
+func pickProfile(browserName, userData string) (string, error) {
+	ps, err := browser.Profiles(userData)
+	if err != nil || len(ps) == 0 {
+		return "", fmt.Errorf("没读到 %s 的 profile 列表（%v）。%s", browserName, err, profileList(userData))
+	}
+	if len(ps) == 1 {
+		return ps[0].Dir, nil
+	}
+	opts := make([]choice, len(ps))
+	for i, p := range ps {
+		label := p.Dir
+		if p.Name != "" && p.Name != p.Dir {
+			label = p.Name + "（" + p.Dir + "）"
+		}
+		opts[i] = choice{label, p.Dir}
+	}
+	dir, err := selectOne("复制 "+browserName+" 的哪个 profile？", opts)
+	if errors.Is(err, ErrNotInteractive) {
+		return "", fmt.Errorf("不是交互终端，没法选。%s", profileList(userData))
+	}
+	return dir, err
 }
 
 // loginClean: dedicated profile that persists between runs. Needs CDP, so a
