@@ -265,7 +265,34 @@ func loginClone(ctx context.Context, cmd *cobra.Command, p provider.Provider, o 
 	if !o.keepClone {
 		defer os.RemoveAll(dst)
 	}
+	cloneNotice(w, b.Kind.Name, o.fromProfile, dst, p.LoginSpec())
 	return browserLogin(ctx, w, exe, dst, p)
+}
+
+// cloneNotice looks at the copied cookie database before the browser opens and
+// says what to expect: no login cookie in that profile, or cookies under
+// app-bound encryption, which a copy usually cannot decrypt. Either way the
+// person can still log in once in the window that opens.
+func cloneNotice(w io.Writer, browserName, profile, dst string, spec provider.LoginSpec) {
+	var hosts []string
+	for _, u := range spec.CookieURLs {
+		if h, err := hostOf(u); err == nil {
+			hosts = append(hosts, h)
+		}
+	}
+	c, err := browser.InspectCookies(filepath.Join(dst, "Default", "Network", "Cookies"), hosts, spec.CookieNames)
+	if err != nil || !c.Readable {
+		return
+	}
+	switch {
+	case c.Found == 0:
+		fmt.Fprintf(w, "注意：%s 的 profile「%s」里没有这个站的登录 cookie（这个 profile 没登录过它，或者登录 cookie 在关浏览器时就清掉了）。\n"+
+			"  浏览器打开后，直接在那个窗口里登录一次，hb 会读到；也可以换个 profile（只写 --from-profile 会列出来），或者改用 --method token。\n", browserName, profile)
+	case c.AppBound > 0:
+		fmt.Fprintf(w, "注意：%s 把这个站的登录 cookie 用「应用绑定加密」（v20）存着，这是浏览器专门防止 cookie 被复制到别处用的，复制出来的 profile 多半解不开，打开后会显示没登录。\n"+
+			"  可以直接在弹出的窗口里登录一次（hb 会读到；这份副本用完就删，下次还要再登）；\n"+
+			"  更省事的是 --method token（个人令牌），或者 --method ext（用扩展在你原来的浏览器里读，不复制）。\n", browserName)
+	}
 }
 
 // askProfile is what a bare --from-profile stands for: list the profiles and ask.
