@@ -4,3 +4,6 @@ hb.exe
 .env
 *.har
 /hb
+
+# hb zyese play --trace output
+zyese-trace*.log

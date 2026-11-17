@@ -536,6 +536,24 @@ func (m *Model) overView() string {
 	switch m.overReason {
 	case "cheat":
 		b.WriteString(errSt.Render("服务器判定这局输入异常，结束了。") + "\n")
+		if m.state != nil && len(m.state.Result) > 0 {
+			var r struct {
+				CheatReason  string `json:"cheatReason"`
+				Warning      bool   `json:"warning"`
+				WarningCount int    `json:"warningCount"`
+				Banned       bool   `json:"banned"`
+			}
+			if json.Unmarshal(m.state.Result, &r) == nil {
+				if r.CheatReason != "" {
+					b.WriteString(dim.Render("原因："+r.CheatReason) + "\n")
+				}
+				if r.Banned {
+					b.WriteString(errSt.Render("账号已被封禁。") + "\n")
+				} else if r.Warning {
+					b.WriteString(warnSt.Render(fmt.Sprintf("这是第 %d 次警告；再被判定可能会封号，先别继续玩，等问清楚。", r.WarningCount)) + "\n")
+				}
+			}
+		}
 	case "logout":
 		b.WriteString(errSt.Render("服务器让这局下线了（封禁、应用停用或在别处开了新局）。") + "\n")
 	default:
