@@ -68,7 +68,7 @@ var ErrReauth = errors.New("登录已失效，请重新运行 hb zyese login")
 // to show the person (the address to open by hand if the browser does not).
 func Login(ctx context.Context, hc *http.Client, open func(string) error, say io.Writer) (Tokens, error) {
 	ctx = oidc.ClientContext(ctx, hc)
-	provider, err := oidc.NewProvider(ctx, Issuer)
+	provider, err := discover(ctx)
 	if err != nil {
 		return Tokens{}, fmt.Errorf("读 Luminet Auth 的配置失败：%w", err)
 	}
@@ -135,7 +135,7 @@ func Refresh(ctx context.Context, hc *http.Client, refresh string) (Tokens, erro
 		return Tokens{}, ErrReauth
 	}
 	ctx = oidc.ClientContext(ctx, hc)
-	provider, err := oidc.NewProvider(ctx, Issuer)
+	provider, err := discover(ctx)
 	if err != nil {
 		return Tokens{}, fmt.Errorf("读 Luminet Auth 的配置失败：%w", err)
 	}
@@ -153,6 +153,24 @@ func Refresh(ctx context.Context, hc *http.Client, refresh string) (Tokens, erro
 		out.Refresh = refresh
 	}
 	return out, nil
+}
+
+// discover reads the IdP's discovery document; it is a plain GET, so a
+// network hiccup (a TLS handshake timing out) is tried again, three times at most.
+func discover(ctx context.Context) (*oidc.Provider, error) {
+	var err error
+	for i := 0; i < 3; i++ {
+		var p *oidc.Provider
+		if p, err = oidc.NewProvider(ctx, Issuer); err == nil {
+			return p, nil
+		}
+		select {
+		case <-time.After(time.Duration(i+1) * time.Second):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return nil, err
 }
 
 func oauthConfig(ep oauth2.Endpoint) oauth2.Config {

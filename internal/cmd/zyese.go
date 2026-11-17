@@ -257,7 +257,7 @@ func zyeseTokenFunc(prof string) zyese.TokenFunc {
 }
 
 func playerName(u map[string]any) string {
-	for _, k := range []string{"displayName", "nickname", "name", "username"} {
+	for _, k := range []string{"displayName", "playerName", "nickname", "name", "username"} {
 		if v, ok := u[k].(string); ok && v != "" {
 			return v
 		}
@@ -292,31 +292,39 @@ func writeFields(out io.Writer, st *ui.UI, m map[string]any, indent string) {
 	}
 }
 
-// writeBoard prints a leaderboard's entries as rank, name, score.
+// writeBoard prints a leaderboard: rank, name, score, wave, kills, accuracy,
+// and where the run was played when it was not the web page.
 func writeBoard(out io.Writer, st *ui.UI, m map[string]any) {
 	entries, _ := m["entries"].([]any)
 	if len(entries) == 0 {
 		fmt.Fprintln(out, st.Dim("榜上还没有人"))
 		return
 	}
+	numOf := func(row map[string]any, k string) string {
+		if v, ok := row[k].(float64); ok {
+			return fmt.Sprintf("%.0f", v)
+		}
+		return "-"
+	}
+	right := func(s string, w int) string { return strings.Repeat(" ", max(0, w-ui.Width(s))) + s }
+	fmt.Fprintln(out, st.Dim(right("名次", 4)+"  "+ui.Pad("玩家", 20)+" "+right("分数", 8)+" "+right("波次", 4)+" "+right("击落", 4)+" "+right("准确率", 6)))
 	for i, e := range entries {
 		row, _ := e.(map[string]any)
 		rank := fmt.Sprint(i + 1)
 		if r, ok := row["rank"].(float64); ok {
 			rank = fmt.Sprintf("%.0f", r)
 		}
-		name := playerName(row)
-		if p, ok := row["player"].(map[string]any); ok && name == "（接口没给名字）" {
-			name = playerName(p)
+		acc := numOf(row, "accuracy")
+		if acc != "-" {
+			acc += "%"
 		}
-		score := ""
-		if s, ok := row["score"].(float64); ok {
-			score = fmt.Sprintf("%.0f", s)
+		where := ""
+		if p, _ := row["platform"].(string); p != "" && p != "web" {
+			where = st.Dim("  " + p)
 		}
-		extra := ""
-		if app, ok := row["clientName"].(string); ok && app != "" {
-			extra = st.Dim("  第三方应用 · " + app)
+		if app, _ := row["clientName"].(string); app != "" {
+			where = st.Dim("  第三方应用 · " + app)
 		}
-		fmt.Fprintf(out, "%4s  %-20s %8s%s\n", rank, name, score, extra)
+		fmt.Fprintf(out, "%4s  %s %8s %4s %4s %6s%s\n", rank, ui.Pad(playerName(row), 20), numOf(row, "score"), numOf(row, "wave"), numOf(row, "kills"), acc, where)
 	}
 }
