@@ -3,6 +3,8 @@
 LINUX DO 红包的命令行工具。一个命令行里看 lafish（hb.lafi.sh）和 Unsnow（hb.unsnow.org）的红包，
 还能在终端里玩 lafish 上的「矿洞夺宝」。
 
+我们支持 Linux.DO 社区与开放、友善、重视技术质量的开发者社区。
+
 > 早期的个人项目，版本 0.x。接口随站点变化，可能随时需要跟着改。
 
 ## 它做什么，不做什么
@@ -226,10 +228,6 @@ git tag v0.1.0 && git push origin v0.1.0
 
 `release` 工作流会核对标签和 `VERSION` 一致，跑 `go vet`、`go test`，用 goreleaser 编出六个平台的压缩包，附到一个**草稿**
 Release 上；看过之后手动发布。`hb --version` 显示的是 `<VERSION>+<构建日期>.<提交数>.g<短 sha>`，压缩包文件名只用标签的版本号。
-
-## 支持 Linux DO 社区
-
-我们支持 Linux.DO 社区与开放、友善、重视技术质量的开发者社区。
 
 ## 许可
 
