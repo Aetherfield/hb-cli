@@ -159,3 +159,59 @@ func TestFileLogRoundTrip(t *testing.T) {
 	// an unwritable place is ignored, not fatal: it is only a log
 	(&FileHintLog{Path: filepath.Join(path, "x", "y")}).Record(HintRecord{})
 }
+
+func TestCalibrateCountsCertainDangersAndDeducedKinds(t *testing.T) {
+	log := strings.Join([]string{
+		// version 2: certain danger, right; certain danger, wrong; deduced kind right and wrong
+		`{"v":2,"risk":1,"certain":true,"exact":true,"kind":"tnt","danger":true,"known":"tnt"}`,
+		`{"v":2,"risk":1,"certain":true,"exact":true,"kind":"emerald","danger":false}`,
+		`{"v":2,"risk":0,"safe":true,"exact":true,"kind":"coal","danger":false,"known":"coal"}`,
+		`{"v":2,"risk":0,"safe":true,"exact":true,"kind":"emerald","danger":false,"known":"coal"}`,
+		// an older log: no version, a risk of 1 said "certainly a danger"
+		`{"risk":1,"safe":false,"exact":true,"kind":"tnt","danger":true}`,
+		// an older log without any of the new fields: nothing is claimed about kinds
+		`{"risk":0.3,"safe":false,"exact":true,"kind":"coal","danger":false}`,
+	}, "\n")
+	cal, err := Calibrate(strings.NewReader(log))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cal.CertainDigs != 3 || cal.CertainWrong != 1 || cal.KnownDigs != 3 || cal.KnownWrong != 1 || cal.KnownByKind["coal"] != 2 {
+		t.Fatalf("%+v", cal)
+	}
+	out := cal.String()
+	for _, want := range []string{"一定危险", "不是危险的 1 次", "出错了", "按数量推定出内容", "推错的 1 次"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report missing %q:\n%s", want, out)
+		}
+	}
+	// a log with only right answers says so
+	good, _ := Calibrate(strings.NewReader(`{"v":2,"risk":1,"certain":true,"exact":true,"kind":"tnt","danger":true,"known":"tnt"}`))
+	if g := good.String(); !strings.Contains(g, "没出过错") || strings.Contains(g, "出错了") {
+		t.Fatalf("%s", g)
+	}
+}
+
+func TestTheTUILogsACertainDangerAndADeducedKind(t *testing.T) {
+	log := &memLog{}
+	st := baseState()
+	c := card(1, 0, 0, 3)
+	c.Left = map[Kind]int{"tnt": 1}
+	for i := range c.Cells {
+		if i != 5 {
+			c.Cells[i] = &OpenCell{Kind: "emerald", UID: 9}
+		}
+	}
+	st.Game.Cards = []PublicCard{c}
+	g := &fakeGame{digAnswer: DigAnswer{OK: true, Result: &DigResult{Kind: "tnt"}, Me: Me{Status: "playing"}}}
+	m := newModel(t, g, nil, Options{Hints: true, HintLog: log, Packet: "pk"}, st)
+	m.cur = 5
+	run(t, m, key(m, "enter"))
+	if len(log.recs) != 1 {
+		t.Fatalf("%+v", log.recs)
+	}
+	r := log.recs[0]
+	if r.V != 2 || !r.Certain || r.Known != "tnt" || !r.Danger || r.Kind != "tnt" {
+		t.Fatalf("the prediction is logged with what it claimed: %+v", r)
+	}
+}

@@ -30,6 +30,11 @@ type HintRecord struct {
 	Exact  bool      `json:"exact"`  // all the information could be used
 	Kind   Kind      `json:"kind"`   // what the cell turned out to be
 	Danger bool      `json:"danger"` // and whether that is a danger
+
+	// From version 2 of the log on (older records have none of these).
+	V       int  `json:"v,omitempty"`
+	Certain bool `json:"certain,omitempty"` // it said: certainly a danger (the red ✗)
+	Known   Kind `json:"known,omitempty"`   // it said: the counts settle that this cell is this kind
 }
 
 // HintLog receives records.
@@ -65,7 +70,8 @@ func predict(c PublicCard, peeks []Peek, idx int, packet string) (HintRecord, bo
 	if !ok {
 		return HintRecord{}, false
 	}
-	return HintRecord{At: time.Now().UTC(), Packet: packet, Card: c.ID, Index: idx, Risk: r, Safe: a.IsSafe(idx), Exact: a.Exact}, true
+	return HintRecord{At: time.Now().UTC(), Packet: packet, Card: c.ID, Index: idx, Risk: r, Safe: a.IsSafe(idx), Exact: a.Exact,
+		V: 2, Certain: a.IsDanger(idx), Known: a.Known[idx]}, true
 }
 
 // finish completes a prediction with what the dig turned out to be.
@@ -83,6 +89,12 @@ type Calibration struct {
 	Bands        []Band
 	Inexact      int // digs where part of the information was not used
 	Unclassified int
+
+	CertainDigs  int // digs the advisor called certainly a danger (the red ✗)
+	CertainWrong int // ... that were not a danger (must be 0)
+	KnownDigs    int // digs where the advisor named the cell's kind (log version 2 on)
+	KnownWrong   int // ... and named it wrong (must be 0)
+	KnownByKind  map[Kind]int
 }
 
 // Band is a range of predicted risk and what really happened in it.
@@ -117,6 +129,23 @@ func Calibrate(r io.Reader) (Calibration, error) {
 		cal.Digs++
 		if !rec.Exact {
 			cal.Inexact++
+		}
+		if rec.Known != "" {
+			cal.KnownDigs++
+			if cal.KnownByKind == nil {
+				cal.KnownByKind = map[Kind]int{}
+			}
+			cal.KnownByKind[rec.Known]++
+			if rec.Known != rec.Kind {
+				cal.KnownWrong++
+			}
+		}
+		if rec.Certain || (rec.V == 0 && rec.Risk >= 1) { // older logs: a risk of 1 said the same
+			cal.CertainDigs++
+			if !rec.Danger {
+				cal.CertainWrong++
+			}
+			continue
 		}
 		if rec.Safe {
 			cal.SafeDigs++
@@ -158,6 +187,20 @@ func (c Calibration) String() string {
 		verdict = "出错了！建议把这份日志和红包 id 发给我，说明我对规则的理解有地方不对"
 	}
 	fmt.Fprintf(&b, "预测「零风险」的格子：挖了 %d 次，其中是危险的 %d 次 —— %s\n", c.SafeDigs, c.SafeDangers, verdict)
+	if c.CertainDigs > 0 {
+		verdict := "没出过错"
+		if c.CertainWrong > 0 {
+			verdict = "出错了！「一定危险」的格子挖出来不是危险，建议把这份日志和红包 id 发给我"
+		}
+		fmt.Fprintf(&b, "预测「一定危险」（红色 ✗）的格子：挖了 %d 次，其中不是危险的 %d 次 —— %s\n", c.CertainDigs, c.CertainWrong, verdict)
+	}
+	if c.KnownDigs > 0 {
+		verdict := "没出过错"
+		if c.KnownWrong > 0 {
+			verdict = "出错了！按数量推定的内容和挖出来的不一样，说明「还剩」的数量假设不成立，建议把这份日志和红包 id 发给我"
+		}
+		fmt.Fprintf(&b, "按数量推定出内容的格子（深蓝底）：挖了 %d 次，其中推错的 %d 次 —— %s\n", c.KnownDigs, c.KnownWrong, verdict)
+	}
 	fmt.Fprintf(&b, "其余按预测的危险概率分档，对比实际踩到危险的比例：\n")
 	for _, band := range c.Bands {
 		if band.Digs == 0 {
