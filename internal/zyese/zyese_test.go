@@ -50,7 +50,7 @@ func TestWordsComeFromTheGlyphsNeverTheDecoy(t *testing.T) {
 func TestInputsAckResendAndGaps(t *testing.T) {
 	var in Inputs
 	for _, k := range "abcde" {
-		in.Add(string(k), 1)
+		in.Add(string(k), 1, nil)
 	}
 	in.Ack(2)
 	if un := in.Unacked(); len(un) != 3 || un[0].Seq != 3 {
@@ -61,7 +61,7 @@ func TestInputsAckResendAndGaps(t *testing.T) {
 		t.Fatalf("from 2: %+v %v", got, ok)
 	}
 	for i := 0; i < keepRecent+10; i++ {
-		in.Add("x", 2)
+		in.Add("x", 2, nil)
 	}
 	in.Ack(in.Next() - 1)
 	if _, ok := in.From(1); ok {
@@ -128,17 +128,18 @@ func TestCallbackTakesOnlyTheCurrentAttemptOnce(t *testing.T) {
 // ---- a fake game server ----
 
 type fakeServer struct {
-	t        *testing.T
-	srv      *httptest.Server
-	mu       sync.Mutex
-	frames   []map[string]any // what the client sent on the socket (not heartbeats)
-	beats    int
-	probeAck map[string]any
-	auths    []string // Authorization headers of the handshakes
-	abandon  []map[string]string
-	conn     *websocket.Conn
-	ready    chan struct{}
-	got      chan map[string]any
+	t         *testing.T
+	srv       *httptest.Server
+	mu        sync.Mutex
+	frames    []map[string]any // what the client sent on the socket (not heartbeats)
+	beats     int
+	probeAck  map[string]any
+	authFrame map[string]any
+	auths     []string // Authorization headers of the handshakes
+	abandon   []map[string]string
+	conn      *websocket.Conn
+	ready     chan struct{}
+	got       chan map[string]any
 }
 
 func newFakeServer(t *testing.T) *fakeServer {
@@ -178,12 +179,13 @@ func newFakeServer(t *testing.T) *fakeServer {
 		}
 		var auth map[string]any
 		_ = json.Unmarshal(first, &auth)
-		if auth["type"] != "auth" || auth["token"] != "run-token-1" || auth["transportVersion"] != float64(3) || auth["inputTelemetryVersion"] != float64(0) {
+		if auth["type"] != "auth" || auth["token"] != "run-token-1" || auth["transportVersion"] != float64(3) || (auth["inputTelemetryVersion"] != float64(0) && auth["inputTelemetryVersion"] != float64(1)) {
 			c.Close(4001, "bad first frame")
 			return
 		}
 		f.mu.Lock()
 		f.conn = c
+		f.authFrame = auth
 		f.mu.Unlock()
 		f.send(`{"type":"ready","serverTime":1,"state":{"status":"playing","inputMode":"en","score":0,"ack":0,"activeTargetId":null,"enemies":[{"id":1,"x":0.5,"y":0.1,"glyphs":[3,1,20],"glyphShift":0,"typedLength":0}]},"events":null,"networkProbe":{"id":7,"serverSentAtUnixMs":1794913594275.5}}`)
 		f.ready <- struct{}{}
@@ -404,7 +406,7 @@ func TestDialBuildsTheSocketAddressFromTheAPIBase(t *testing.T) {
 	if u.Host != "api-zyese.luminet.cn" {
 		t.Fatal(u)
 	}
-	if _, err := Dial(context.Background(), http.DefaultClient, "ftp://x/openapi/v1", "/live", "a", "r", nil); err == nil {
+	if _, err := Dial(context.Background(), http.DefaultClient, "ftp://x/openapi/v1", "/live", "a", "r", 0, nil); err == nil {
 		t.Fatal("a non-http base is refused")
 	}
 }
@@ -525,5 +527,137 @@ func TestReadsAreTriedAgainButStartsAreNot(t *testing.T) {
 	cl.HTTP = &http.Client{Transport: ft}
 	if _, err := cl.StartRun(context.Background(), "en"); err == nil || ft.calls != 1 {
 		t.Fatalf("a POST is never repeated: %v calls=%d", err, ft.calls)
+	}
+}
+
+// ---- input telemetry version 1 ----
+
+func TestTheMatcherVouchesOnlyForKeysTheKeyboardMade(t *testing.T) {
+	src := make(chan RawKey, 16)
+	m := NewMatcher()
+	m.Attach(src)
+	defer m.Stop()
+	clock := time.Duration(0)
+	now := func() time.Duration { return clock }
+
+	// a real 'c': down, then the terminal delivers it, then up
+	src <- RawKey{VK: 'C', Down: true, At: 100 * time.Millisecond}
+	clock = 130 * time.Millisecond
+	a := m.Take('c', now)
+	if !a.Trusted || a.Source != "physical" || a.Code != "KeyC" || a.EventAt != 100 || a.Repeat {
+		t.Fatalf("a real key: %+v", a)
+	}
+	src <- RawKey{VK: 'C', Down: false, At: 190 * time.Millisecond}
+	deadline := time.Now().Add(time.Second)
+	var ups []KeyUp
+	for len(ups) == 0 && time.Now().Before(deadline) {
+		ups = m.Ups()
+		time.Sleep(5 * time.Millisecond)
+	}
+	if len(ups) != 1 || ups[0].EventID != a.EventID || ups[0].Key != "c" || !ups[0].Trusted || ups[0].EventAt != 190 {
+		t.Fatalf("its release: %+v", ups)
+	}
+
+	// an injected 'a': the keyboard flag says a program put it in
+	src <- RawKey{VK: 'A', Down: true, Injected: true, At: 300 * time.Millisecond}
+	clock = 320 * time.Millisecond
+	if b := m.Take('a', now); b.Trusted {
+		t.Fatalf("an injected key must not be trusted: %+v", b)
+	}
+
+	// a key the terminal got with no keyboard event at all
+	clock = 900 * time.Millisecond
+	c := m.Take('x', now)
+	if c.Trusted || c.EventAt != 900 || c.Source != "physical" {
+		t.Fatalf("no keyboard event: %+v", c)
+	}
+
+	// an input method commit has no physical key
+	if d := m.Take('飞', now); d.Source != "ime" || d.Trusted {
+		t.Fatalf("ime: %+v", d)
+	}
+
+	// a held key: the second down of the same key is a repeat
+	src <- RawKey{VK: 'D', Down: true, At: 1000 * time.Millisecond}
+	clock = 1010 * time.Millisecond
+	m.Take('d', now)
+	src <- RawKey{VK: 'D', Down: true, At: 1040 * time.Millisecond}
+	clock = 1050 * time.Millisecond
+	if e := m.Take('d', now); !e.Repeat {
+		t.Fatalf("held key: %+v", e)
+	}
+	// one key event is never used for two characters
+	clock = 1060 * time.Millisecond
+	if f := m.Take('d', now); f.Trusted {
+		t.Fatalf("the same keyboard event twice: %+v", f)
+	}
+}
+
+func TestVersionOneKeysCarryTheirTelemetry(t *testing.T) {
+	tr := true
+	rp := false
+	in := Input{Seq: 3, Key: "c", At: 100, EventID: 7, Source: "physical", Trusted: &tr, Code: "KeyC", Repeat: &rp}
+	b, _ := json.Marshal(struct {
+		Type string `json:"type"`
+		Input
+	}{"key", in})
+	var got map[string]any
+	_ = json.Unmarshal(b, &got)
+	if got["type"] != "key" || got["eventId"] != float64(7) || got["inputSource"] != "physical" || got["trusted"] != true || got["code"] != "KeyC" || got["repeat"] != false {
+		t.Fatalf("%s", b)
+	}
+	// version 0 sends none of it
+	b, _ = json.Marshal(Input{Seq: 1, Key: "a", At: 5})
+	if strings.Contains(string(b), "trusted") || strings.Contains(string(b), "eventId") || strings.Contains(string(b), "inputSource") {
+		t.Fatalf("version 0 must not carry telemetry: %s", b)
+	}
+}
+
+type fakeHook struct {
+	ch    chan RawKey
+	start time.Time
+}
+
+func (h *fakeHook) Events() <-chan RawKey { return h.ch }
+func (h *fakeHook) Now() time.Duration    { return time.Since(h.start) }
+func (h *fakeHook) Close()                {}
+
+func TestARunWithTheHookSpeaksVersionOne(t *testing.T) {
+	f := newFakeServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cl := &Client{Base: f.srv.URL + "/openapi/v1", HTTP: f.srv.Client(),
+		Token: func(context.Context) (string, error) { return "access-1", nil }}
+	h := &fakeHook{ch: make(chan RawKey, 16), start: time.Now()}
+	m := NewModel(ctx, Game{Client: cl, HTTP: f.srv.Client(), Mode: "en", Hook: h})
+	waitCmd := drive(m, drive(m, m.Init()))
+	<-f.ready
+	drive(m, waitCmd)
+	f.mu.Lock()
+	auth := f.authFrame
+	f.mu.Unlock()
+	if auth["inputTelemetryVersion"] != float64(1) {
+		t.Fatalf("the first frame says version 1: %v", auth)
+	}
+
+	// a real key: the keyboard event first, then the character
+	h.ch <- RawKey{VK: 'C', Down: true, At: h.Now()}
+	typeKeys(m, "c")
+	k := f.next()
+	if k["type"] != "key" || k["trusted"] != true || k["inputSource"] != "physical" || k["code"] != "KeyC" || k["eventId"] == nil || k["repeat"] != false {
+		t.Fatalf("a real key carries its telemetry: %v", k)
+	}
+	// its release goes out with the next update
+	h.ch <- RawKey{VK: 'C', Down: false, At: h.Now()}
+	time.Sleep(60 * time.Millisecond)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	up := f.next()
+	if up["type"] != "key_up" || up["eventId"] != k["eventId"] || up["key"] != "c" || up["trusted"] != true || up["code"] != "KeyC" {
+		t.Fatalf("the release: %v", up)
+	}
+	// a character the keyboard never made: sent, but not vouched for
+	typeKeys(m, "z")
+	if k2 := f.next(); k2["trusted"] != false || k2["code"] != "KeyZ" {
+		t.Fatalf("no keyboard event: %v", k2)
 	}
 }

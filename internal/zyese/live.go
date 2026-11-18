@@ -123,9 +123,15 @@ type Msg struct {
 // Input is one character typed, with its sequence number and when (ms on a
 // monotonic clock).
 type Input struct {
-	Seq int    `json:"seq"`
-	Key string `json:"key"`
-	At  int64  `json:"clientEventAt,omitempty"`
+	Seq int     `json:"seq"`
+	Key string  `json:"key"`
+	At  float64 `json:"clientEventAt,omitempty"`
+	// input telemetry version 1: where the key came from (see hook.go)
+	EventID int    `json:"eventId,omitempty"`
+	Source  string `json:"inputSource,omitempty"`
+	Trusted *bool  `json:"trusted,omitempty"`
+	Code    string `json:"code,omitempty"`
+	Repeat  *bool  `json:"repeat,omitempty"`
 }
 
 // Inputs numbers what the person types and keeps what the server has not
@@ -141,12 +147,16 @@ type Inputs struct {
 
 const keepRecent = 128
 
-// Add numbers a key.
-func (in *Inputs) Add(key string, at int64) Input {
+// Add numbers a key. t is its telemetry, nil for version 0.
+func (in *Inputs) Add(key string, at float64, t *Telemetry) Input {
 	in.mu.Lock()
 	defer in.mu.Unlock()
 	in.next++
 	i := Input{Seq: in.next, Key: key, At: at}
+	if t != nil {
+		tr, rp := t.Trusted, t.Repeat
+		i.EventID, i.Source, i.Trusted, i.Code, i.Repeat, i.At = t.EventID, t.Source, &tr, t.Code, &rp, t.EventAt
+	}
 	in.unacked = append(in.unacked, i)
 	return i
 }
@@ -239,7 +249,7 @@ const (
 // sends the first frame (the run token), then reads messages into Msgs until
 // the connection ends; Err says why. trace, if not nil, gets every message
 // the server sent (never what is sent to it, which carries the run token).
-func Dial(ctx context.Context, hc *http.Client, apiBase, livePath, access, runToken string, trace io.Writer) (*Conn, error) {
+func Dial(ctx context.Context, hc *http.Client, apiBase, livePath, access, runToken string, telemetry int, trace io.Writer) (*Conn, error) {
 	origin := apiBase
 	if i := strings.Index(origin, "/openapi/"); i >= 0 {
 		origin = origin[:i]
@@ -265,7 +275,7 @@ func Dial(ctx context.Context, hc *http.Client, apiBase, livePath, access, runTo
 	ws.SetReadLimit(1 << 20)
 	cctx, cancel := context.WithCancel(ctx)
 	c := &Conn{ws: ws, Msgs: make(chan Msg, 64), out: make(chan []byte, 512), done: make(chan struct{}), cancel: cancel, trace: trace}
-	first := map[string]any{"type": "auth", "token": runToken, "transportVersion": 3, "inputTelemetryVersion": 0}
+	first := map[string]any{"type": "auth", "token": runToken, "transportVersion": 3, "inputTelemetryVersion": telemetry}
 	if err := c.send(cctx, first); err != nil {
 		cancel()
 		ws.CloseNow()
@@ -389,7 +399,17 @@ func (c *Conn) send(ctx context.Context, v any) error {
 
 // Key sends one typed character.
 func (c *Conn) Key(ctx context.Context, i Input) error {
-	return c.queue(map[string]any{"type": "key", "seq": i.Seq, "key": i.Key, "clientEventAt": i.At})
+	return c.queue(struct {
+		Type string `json:"type"`
+		Input
+	}{"key", i})
+}
+
+// KeyUp tells the server a key it was told about was released (version 1).
+func (c *Conn) KeyUp(u KeyUp) error {
+	trusted := u.Trusted
+	return c.queue(map[string]any{"type": "key_up", "eventId": u.EventID, "key": u.Key, "inputSource": "physical",
+		"trusted": trusted, "clientEventAt": u.EventAt, "code": u.Code})
 }
 
 // Resend sends inputs again, in order, at most 16 to a frame, with their
