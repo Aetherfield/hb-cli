@@ -46,6 +46,7 @@ jobs:
           fetch-depth: 200 # recent history, to see which issues commits mention
 
       - name: Claude sets the board's progress
+        id: claude
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.HB_PROJECT_TOKEN }}
@@ -102,3 +103,26 @@ jobs:
             6. End with a short report in Chinese: each item you changed (number,
                title, old → new, and the one fact that decided it), then the
                items you left as they were because the evidence was unclear.
+
+      # Claude's report and any command its tool list refused, on the run's
+      # Summary page. Only those two, from the run's own record: the full
+      # transcript stays out of the public log. The report sits in a code
+      # block, so nothing in it is rendered as a link or page.
+      - name: Report
+        if: always() && steps.claude.outputs.execution_file != ''
+        env:
+          FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          {
+            echo "## 看板整理"
+            echo
+            echo '~~~~text'
+            jq -r '[.[] | select(.type == "result")] | last | .result // "（没有报告）"' "$FILE"
+            echo '~~~~'
+            echo
+            echo "### 工具列表没放行的调用"
+            echo
+            echo '~~~~text'
+            jq -r '[.[] | select(.type == "result")] | last | (.permission_denials // []) | if length == 0 then "（没有）" else .[] | "\(.tool_name)  \(.tool_input | tostring | .[0:300])" end' "$FILE"
+            echo '~~~~'
+          } >> "$GITHUB_STEP_SUMMARY"
