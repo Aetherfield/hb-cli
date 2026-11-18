@@ -156,7 +156,6 @@ func newZyeseCmd() *cobra.Command {
 	}
 	rank.Flags().StringVar(&rankMode, "mode", "en", "en | zh | ja")
 	var playMode, tracePath string
-	var telemetry bool
 	play := &cobra.Command{
 		Use:   "play",
 		Short: "开一局（全屏）",
@@ -178,15 +177,6 @@ func newZyeseCmd() *cobra.Command {
 				}
 			}
 			g := zyese.Game{Client: cl, HTTP: zyeseHTTP(), Mode: playMode}
-			if telemetry {
-				h, err := zyese.StartHook()
-				if err != nil {
-					return fmt.Errorf("--input-telemetry 开不了：%w\n不加这个选项就是普通的输入（版本 0）", err)
-				}
-				defer h.Close()
-				g.Hook = h
-				fmt.Fprintln(cmd.ErrOrStderr(), ui.For(cmd.ErrOrStderr()).Dim("输入遥测已开（版本 1）：只在这一局里，只有终端收到的那些键会带上「是不是键盘按的」，其余的键盘事件不保存、不发送。"))
-			}
 			if tracePath != "" {
 				f, err := os.OpenFile(tracePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 				if err != nil {
@@ -205,7 +195,6 @@ func newZyeseCmd() *cobra.Command {
 		},
 	}
 	play.Flags().StringVar(&playMode, "mode", "en", "en | zh | ja")
-	play.Flags().BoolVar(&telemetry, "input-telemetry", false, "按键带上「是不是真的键盘按的」（输入遥测版本 1，要先 hb zyese install-hook 自检；现在只有 Windows）")
 	play.Flags().StringVar(&tracePath, "trace", "", "把服务器发来的每条消息记到这个文件（排查用；不含令牌）")
 	hell := &cobra.Command{
 		Use:   "hell",
@@ -261,41 +250,7 @@ func newZyeseCmd() *cobra.Command {
 			return nil
 		},
 	}
-	installHook := &cobra.Command{
-		Use:   "install-hook",
-		Short: "准备并自检「按键是不是键盘按的」的钩子（输入遥测用）",
-		Long: "输入遥测（hb zyese play --input-telemetry）让每个按键带上「是不是真的键盘按的」：系统会告诉 hb 一个按键是键盘产生的，\n" +
-			"还是别的程序塞进来的，这和浏览器里的 isTrusted 是同一类东西。\n\n" +
-			"Windows：不用安装，也不用管理员。这条命令只做自检：用程序模拟一个无害的键（F24），看钩子能不能把它认成「注入」；\n" +
-			"再让你随便敲几下，数一数被认成键盘的有几个。只计数，不看你敲了哪些键。\n" +
-			"macOS：要在「系统设置 → 隐私与安全性 → 输入监控」里给终端授权。Linux：要读 /dev/input，要 root 或 input 组。这两个系统 hb 还没做。\n\n" +
-			"钩子只在 --input-telemetry 的那一局里存在，只在内存里，对局一结束就卸掉。",
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			out := cmd.OutOrStdout()
-			u := ui.For(out)
-			fmt.Fprintln(out, "自检：先模拟一个键，再请你在接下来的 6 秒里随便敲几下键盘（只数个数，不记是哪些键）…")
-			r, err := zyese.SelfTest(6 * time.Second)
-			if errors.Is(err, zyese.ErrHookUnsupported) {
-				return fmt.Errorf("%w。macOS 要给终端「输入监控」权限、Linux 要读 /dev/input，这两个系统的钩子 hb 还没做", err)
-			}
-			if err != nil {
-				return err
-			}
-			mark := func(ok bool) string { return u.Mark(ok) }
-			fmt.Fprintf(out, "%s 模拟的键被认成「注入」：%v\n", mark(r.InjectedSeen), r.InjectedSeen)
-			fmt.Fprintf(out, "%s 你敲的键被认成键盘按的：%d 个\n", mark(r.Physical > 0), r.Physical)
-			if r.InjectedOther > 0 {
-				fmt.Fprintf(out, "%s 有 %d 个键被认成别的程序塞进来的（输入法、远程桌面或自动化工具会这样）；这样的键 hb 会如实标成 trusted: false\n", u.Mark(false), r.InjectedOther)
-			}
-			if !r.InjectedSeen || r.Physical == 0 {
-				return errors.New("钩子没有按预期工作；这时别用 --input-telemetry")
-			}
-			fmt.Fprintln(out, "可以用了：hb zyese play --input-telemetry")
-			return nil
-		},
-	}
-	c.AddCommand(login, logout, me, stats, rank, hell, event, play, installHook)
+	c.AddCommand(login, logout, me, stats, rank, hell, event, play)
 	return c
 }
 

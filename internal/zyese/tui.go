@@ -27,9 +27,6 @@ type Game struct {
 	HTTP   *http.Client
 	Mode   string
 	Trace  io.Writer
-	// Hook, when set, gives keys a real basis for "trusted" and the run speaks
-	// input telemetry version 1 (hook.go). Nil: version 0, as before.
-	Hook Hook
 }
 
 type (
@@ -71,8 +68,7 @@ type Model struct {
 	lostAt     time.Time
 	notice     string
 	quitArmed  bool
-	matcher    *Matcher // pairs typed keys with the keyboard's (telemetry version 1)
-	quitting   bool     // giving the run up: the connection closing is expected, not a drop
+	quitting   bool // giving the run up: the connection closing is expected, not a drop
 	clockWarn  string
 	err        error
 
@@ -81,29 +77,7 @@ type Model struct {
 
 // NewModel starts a run in mode when the program starts.
 func NewModel(ctx context.Context, g Game) *Model {
-	m := &Model{g: g, ctx: ctx, width: 80, height: 24}
-	if g.Hook != nil {
-		m.matcher = NewMatcher()
-		m.matcher.Attach(g.Hook.Events())
-	}
-	return m
-}
-
-func (m *Model) telemetryVersion() int {
-	if m.matcher != nil {
-		return 1
-	}
-	return 0
-}
-
-// sendUps tells the server which keys were let go, from what the hook saw.
-func (m *Model) sendUps() {
-	if m.matcher == nil || m.conn == nil || !m.ready {
-		return
-	}
-	for _, u := range m.matcher.Ups() {
-		_ = m.conn.KeyUp(u)
-	}
+	return &Model{g: g, ctx: ctx, width: 80, height: 24}
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -120,7 +94,7 @@ func (m *Model) dial() tea.Cmd {
 		if err != nil {
 			return liveEndMsg{nil, err}
 		}
-		c, err := Dial(m.ctx, m.g.HTTP, m.g.Client.Base, run.LivePath, tok, run.RunToken, m.telemetryVersion(), m.g.Trace)
+		c, err := Dial(m.ctx, m.g.HTTP, m.g.Client.Base, run.LivePath, tok, run.RunToken, m.g.Trace)
 		if err != nil {
 			return liveEndMsg{nil, err}
 		}
@@ -141,7 +115,6 @@ func wait(c *Conn) tea.Cmd {
 func (m *Model) since() int64 { return time.Since(m.start).Milliseconds() }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	m.sendUps()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -384,13 +357,7 @@ func (m *Model) key(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	for _, r := range keys {
-		var tele *Telemetry
-		at := float64(m.since())
-		if m.matcher != nil {
-			t := m.matcher.Take(r, m.g.Hook.Now)
-			tele = &t
-		}
-		in := m.inputs.Add(string(r), at, tele)
+		in := m.inputs.Add(string(r), m.since())
 		if !m.resyncing {
 			_ = m.conn.Key(m.ctx, in)
 		}
