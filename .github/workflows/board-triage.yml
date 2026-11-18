@@ -125,4 +125,4 @@ jobs:
             echo '~~~~text'
             jq -r '[.[] | select(.type == "result")] | last | (.permission_denials // []) | if length == 0 then "（没有）" else .[] | "\(.tool_name)  \(.tool_input | tostring | .[0:300])" end' "$FILE"
             echo '~~~~'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
