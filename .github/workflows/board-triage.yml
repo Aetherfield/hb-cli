@@ -7,7 +7,10 @@
 # (reading files, and read-only gh commands plus `gh project item-edit`).
 #
 # Secrets it needs (Settings → Secrets and variables → Actions):
-#   ANTHROPIC_API_KEY  an Anthropic API key
+#   CLAUDE_CODE_OAUTH_TOKEN  a long-lived Claude Code OAuth token (`claude setup-token`;
+#                      it runs on that Claude subscription). An Anthropic API key
+#                      works too: put it in ANTHROPIC_API_KEY and swap the input below
+#                      for anthropic_api_key.
 #   HB_PROJECT_TOKEN   a token that can edit the organisation's project: a
 #                      fine-grained personal access token with, for the
 #                      Aetherfield organisation, "Projects: Read and write",
@@ -47,7 +50,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HB_PROJECT_TOKEN }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: >-
             --model claude-haiku-5-5
             --max-turns 60
