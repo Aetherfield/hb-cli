@@ -51,6 +51,9 @@ jobs:
           GH_TOKEN: ${{ secrets.HB_PROJECT_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # the workflow's own read-only token: no Claude GitHub App and no OIDC
+          # exchange needed (the board is edited with HB_PROJECT_TOKEN, via GH_TOKEN)
+          github_token: ${{ github.token }}
           claude_args: >-
             --model claude-haiku-5-5
             --max-turns 60
