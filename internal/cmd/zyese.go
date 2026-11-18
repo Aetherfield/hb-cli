@@ -130,10 +130,10 @@ func newZyeseCmd() *cobra.Command {
 	}
 	var rankMode string
 	rank := &cobra.Command{
-		Use:       "rank [daily|yesterday|all-time]",
-		Short:     "排行榜（默认今天、英文）",
+		Use:       "rank [daily|yesterday|all-time|event]",
+		Short:     "排行榜（默认今天、英文；event 是当前活动的榜，只有 en、zh）",
 		Args:      cobra.MaximumNArgs(1),
-		ValidArgs: []string{"daily", "yesterday", "all-time"},
+		ValidArgs: []string{"daily", "yesterday", "all-time", "event"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			scope := "daily"
 			if len(args) == 1 {
@@ -171,6 +171,11 @@ func newZyeseCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if zyese.IsHell(playMode) {
+				if err := checkHell(cmd, cl, playMode); err != nil {
+					return err
+				}
+			}
 			g := zyese.Game{Client: cl, HTTP: zyeseHTTP(), Mode: playMode}
 			if tracePath != "" {
 				f, err := os.OpenFile(tracePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
@@ -191,8 +196,123 @@ func newZyeseCmd() *cobra.Command {
 	}
 	play.Flags().StringVar(&playMode, "mode", "en", "en | zh | ja")
 	play.Flags().StringVar(&tracePath, "trace", "", "把服务器发来的每条消息记到这个文件（排查用；不含令牌）")
-	c.AddCommand(login, logout, me, stats, rank, play)
+	hell := &cobra.Command{
+		Use:   "hell",
+		Short: "地狱模式：解锁进度和今天还剩几次",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cl, err := openZyese()
+			if err != nil {
+				return err
+			}
+			at, err := cl.Hell(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if flagJSON {
+				return writeJSON(cmd.OutOrStdout(), at)
+			}
+			out := cmd.OutOrStdout()
+			u := ui.For(out)
+			for _, mode := range []string{"hell-en", "hell-zh"} {
+				a, ok := at[mode]
+				if !ok {
+					continue
+				}
+				fmt.Fprintln(out, u.Bold(modeName(mode))+"  "+hellLine(u, a))
+			}
+			return nil
+		},
+	}
+	event := &cobra.Command{
+		Use:   "event",
+		Short: "当前的打字活动",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cl, err := openZyese()
+			if err != nil {
+				return err
+			}
+			ev, err := cl.ActiveEvent(cmd.Context())
+			if err != nil {
+				return err
+			}
+			if flagJSON {
+				return writeJSON(cmd.OutOrStdout(), map[string]any{"event": ev})
+			}
+			out := cmd.OutOrStdout()
+			if ev == nil {
+				fmt.Fprintln(out, ui.For(out).Dim("现在没有活动"))
+				return nil
+			}
+			fmt.Fprintf(out, "%s  %s – %s\n", ui.For(out).Bold(ev.Title), msTime(ev.StartsAt), msTime(ev.EndsAt))
+			fmt.Fprintln(out, ui.For(out).Dim("活动榜：hb zyese rank event --mode en（或 zh）"))
+			return nil
+		},
+	}
+	c.AddCommand(login, logout, me, stats, rank, hell, event, play)
 	return c
+}
+
+func modeName(mode string) string {
+	if n, ok := map[string]string{"en": "英文", "zh": "中文", "ja": "日文", "hell-en": "地狱 · 英文", "hell-zh": "地狱 · 中文"}[mode]; ok {
+		return n
+	}
+	return mode
+}
+
+func msTime(ms int64) string {
+	if ms <= 0 {
+		return "-"
+	}
+	return time.UnixMilli(ms).Local().Format("01-02 15:04")
+}
+
+// hellLine is one hell mode's state, in words.
+func hellLine(u *ui.UI, a zyese.HellAttempts) string {
+	if !a.Unlocked {
+		return u.Warn("未解锁") + fmt.Sprintf("：在%s模式里一局击落 %d、打到第 %d 波（你最好的一局：击落 %d、第 %d 波）",
+			modeName(a.NormalMode), a.RequiredKills, a.RequiredWaves, a.BestKills, a.CompletedWaves)
+	}
+	if a.Unlimited || a.Remaining < 0 {
+		return u.Good("已解锁") + "，今天不限次数"
+	}
+	s := u.Good("已解锁") + fmt.Sprintf("，今天还剩 %d / %d 次", a.Remaining, a.Limit)
+	if a.ResetAt > 0 {
+		s += u.Dim("（" + msTime(a.ResetAt) + " 重置）")
+	}
+	return s
+}
+
+// checkHell looks before a hell run: a locked mode or no attempts left is
+// said, and nothing is started; otherwise the person confirms using one.
+func checkHell(cmd *cobra.Command, cl *zyese.Client, mode string) error {
+	at, err := cl.Hell(cmd.Context())
+	if err != nil {
+		return err
+	}
+	a, ok := at[mode]
+	if !ok {
+		return nil // the server will say
+	}
+	u := ui.For(cmd.ErrOrStderr())
+	switch {
+	case !a.Unlocked:
+		return fmt.Errorf("%s %s", modeName(mode), hellLine(u, a))
+	case a.Unlimited || a.Remaining < 0:
+		return nil
+	case a.Remaining == 0:
+		return fmt.Errorf("%s 今天的次数用完了（%d / %d），%s 重置", modeName(mode), a.Used, a.Limit, msTime(a.ResetAt))
+	}
+	v, err := selectOne(fmt.Sprintf("开一局%s会用掉今天的 1 次（还剩 %d / %d），开吗？", modeName(mode), a.Remaining, a.Limit),
+		[]choice{{"开", "yes"}, {"算了", "no"}})
+	if err != nil {
+		return err
+	}
+	if v != "yes" {
+		return errors.New("没开局")
+	}
+	return nil
 }
 
 func zyeseHTTP() *http.Client { return &http.Client{Timeout: 20 * time.Second} }

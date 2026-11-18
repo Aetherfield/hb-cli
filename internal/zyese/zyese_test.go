@@ -442,3 +442,88 @@ func TestGivingUpIsNotTakenForADrop(t *testing.T) {
 		t.Fatalf("err=%v notice=%q", m.err, m.notice)
 	}
 }
+
+func TestTheSpecsOtherErrorsAndModes(t *testing.T) {
+	for detail, code := range map[string]string{
+		"This hell mode is locked. Check GET /openapi/v1/profile/hell-attempts.":                              "hell_locked",
+		"No hell mode attempts remain today. Check GET /openapi/v1/profile/hell-attempts for the reset time.": "hell_no_attempts",
+		"This game session has expired.":                    "session_expired",
+		"The requested leaderboard scope is not supported.": "scope_unsupported",
+	} {
+		b, _ := json.Marshal(map[string]string{"detail": detail})
+		e := parseError(400, http.Header{}, b)
+		if e.Code != code || e.Hint() == "" || strings.Contains(e.Error(), "HTTP 400") {
+			t.Errorf("%q -> %+v", detail, e)
+		}
+	}
+	for _, m := range []string{"en", "zh", "ja", "hell-en", "hell-zh"} {
+		if checkMode(m) != nil {
+			t.Errorf("%s is a mode", m)
+		}
+	}
+	if checkMode("roguelike") == nil {
+		t.Error("hb does not play roguelike")
+	}
+	cl := &Client{Token: func(context.Context) (string, error) { return "", nil }}
+	if _, err := cl.Leaderboard(context.Background(), "event", "ja"); err == nil || !strings.Contains(err.Error(), "活动榜") {
+		t.Fatalf("the event board is en and zh only: %v", err)
+	}
+	if !IsHell("hell-zh") || IsHell("zh") {
+		t.Fatal("IsHell")
+	}
+}
+
+func TestTheResultIsWrittenInChinese(t *testing.T) {
+	s := resultLines(map[string]any{"score": 47450.0, "wave": 17.0, "kills": 134.0, "longestStreak": 77.0, "accuracy": 77.0, "moderationStatus": "visible", "newField": true})
+	for _, want := range []string{"分数  47450", "最长连击  77", "准确率  77%", "上榜状态  正常上榜", "newField  true"} {
+		if !strings.Contains(stripANSI(s), want) {
+			t.Errorf("missing %q in:\n%s", want, s)
+		}
+	}
+	if !strings.Contains(stripANSI(resultLines(map[string]any{"moderationStatus": "something"})), "something") {
+		t.Error("an unknown status is shown as it comes")
+	}
+	if finishReason("collision") != "被敌机撞毁（collision）" || finishReason("other") != "other" {
+		t.Fatal(finishReason("collision"))
+	}
+}
+
+func stripANSI(s string) string {
+	var b strings.Builder
+	esc := false
+	for _, r := range s {
+		switch {
+		case r == 0x1b:
+			esc = true
+		case esc && (r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z'):
+			esc = false
+		case !esc:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+type flakyTransport struct{ fails, calls int }
+
+func (f *flakyTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	f.calls++
+	if f.calls <= f.fails {
+		return nil, io.ErrUnexpectedEOF
+	}
+	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"event":null}`)), Header: http.Header{}}, nil
+}
+
+func TestReadsAreTriedAgainButStartsAreNot(t *testing.T) {
+	tok := func(context.Context) (string, error) { return "a", nil }
+	ft := &flakyTransport{fails: 2}
+	cl := &Client{Base: "https://x", HTTP: &http.Client{Transport: ft}, Token: tok}
+	if _, err := cl.ActiveEvent(context.Background()); err != nil || ft.calls != 3 {
+		t.Fatalf("a GET is tried three times at most: %v calls=%d", err, ft.calls)
+	}
+	ft = &flakyTransport{fails: 1}
+	cl.HTTP = &http.Client{Transport: ft}
+	if _, err := cl.StartRun(context.Background(), "en"); err == nil || ft.calls != 1 {
+		t.Fatalf("a POST is never repeated: %v calls=%d", err, ft.calls)
+	}
+}

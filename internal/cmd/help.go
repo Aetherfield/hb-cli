@@ -107,6 +107,8 @@ var shorts = map[string]string{
 	"hb zyese me":        "我是谁、应用是否获准、能玩哪些模式",
 	"hb zyese stats":     "我的战绩",
 	"hb zyese rank":      "排行榜（默认今天、英文）",
+	"hb zyese hell":      "地狱模式：解锁进度和今天还剩几次",
+	"hb zyese event":     "当前的打字活动",
 	"hb zyese play":      "开一局（全屏）",
 	"hb help":            "查看某个命令的帮助",
 	"hb completion":      "生成命令补全脚本（niu、bash、zsh、fish 等）",
@@ -200,8 +202,8 @@ func localize(f *pflag.Flag) {
 // flagUsageFor is a flag's line for one command, where the same name means
 // something else elsewhere (--mode).
 var flagUsageFor = map[string]map[string]string{
-	"hb zyese play": {"mode": "模式：en 英文 | zh 中文 | ja 日文", "trace": "把服务器发来的每条消息记到这个文件（排查用；不含令牌）"},
-	"hb zyese rank": {"mode": "模式：en 英文 | zh 中文 | ja 日文"},
+	"hb zyese play": {"mode": "模式：en 英文 | zh 中文 | ja 日文 | hell-en 地狱·英文 | hell-zh 地狱·中文", "trace": "把服务器发来的每条消息记到这个文件（排查用；不含令牌）"},
+	"hb zyese rank": {"mode": "模式：en 英文 | zh 中文 | ja 日文 | hell-en | hell-zh（活动榜 event 只有 en、zh）"},
 }
 
 func localizeFor(c *cobra.Command) func(*pflag.Flag) {

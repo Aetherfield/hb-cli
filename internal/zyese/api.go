@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -63,6 +64,30 @@ func (e *APIError) Hint() string {
 		return "请求太频繁，稍后再试"
 	case "unavailable":
 		return "打飞机服务暂时不可用，稍后再试"
+	case "not_found":
+		return "打飞机说找不到这个东西（对局可能已经不在了）"
+	case "invalid_request":
+		return "打飞机说这个请求不对（多半是 hb 的问题，请告诉维护者）"
+	case "state_conflict":
+		return "和对局现在的状态冲突（比如这局已经结束了）"
+	case "mode_unsupported":
+		return "这里不支持这个模式"
+	case "scope_unsupported":
+		return "不支持这个排行榜范围（活动榜只有 en、zh）"
+	case "hell_locked":
+		return "这个地狱模式还没解锁：hb zyese hell 可以看解锁条件"
+	case "hell_no_attempts":
+		return "今天的地狱模式次数用完了：hb zyese hell 可以看什么时候重置"
+	case "linuxdo_unavailable":
+		return "这个 LINUX DO 账号现在不可用"
+	case "forbidden":
+		return "没有权限访问这个"
+	case "websocket_required":
+		return "这里需要 WebSocket 连接（多半是 hb 的问题，请告诉维护者）"
+	case "session_expired":
+		return "这局已经过期了，不能继续"
+	case "method_not_allowed":
+		return "打飞机不支持这种请求方式（多半是 hb 的问题，请告诉维护者）"
 	}
 	return ""
 }
@@ -76,6 +101,19 @@ var businessCodes = map[string]string{
 	"This account is banned. Use GET /openapi/v1/me to check the ban expiry.":                                                                    "account_banned",
 	"Too many requests. Please try again later.":                                                                                                 "rate_limited",
 	"The service is temporarily unavailable. Please try again later.":                                                                            "unavailable",
+	// the rest of DetailError's texts in openapi-v1.yaml
+	"The requested resource was not found.":                                                               "not_found",
+	"The request is invalid.":                                                                             "invalid_request",
+	"The operation conflicts with the current game state.":                                                "state_conflict",
+	"The requested input mode is not supported here.":                                                     "mode_unsupported",
+	"The requested leaderboard scope is not supported.":                                                   "scope_unsupported",
+	"This hell mode is locked. Check GET /openapi/v1/profile/hell-attempts.":                              "hell_locked",
+	"No hell mode attempts remain today. Check GET /openapi/v1/profile/hell-attempts for the reset time.": "hell_no_attempts",
+	"This LinuxDO account is currently unavailable.":                                                      "linuxdo_unavailable",
+	"You do not have permission to access this resource.":                                                 "forbidden",
+	"A WebSocket connection is required.":                                                                 "websocket_required",
+	"This game session has expired.":                                                                      "session_expired",
+	"This HTTP method is not supported for this resource.":                                                "method_not_allowed",
 }
 
 // parseError reads an error response: the auth layer's {"error":{...}} or a
@@ -136,7 +174,19 @@ func (c *Client) do(ctx context.Context, method, path string, in, out any) error
 	if in != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.HTTP.Do(req)
+	// A GET only reads, so a network hiccup (a TLS handshake timing out) is
+	// tried again, twice at most; a POST (starting or leaving a run) never is.
+	var resp *http.Response
+	for try := 0; ; try++ {
+		resp, err = c.HTTP.Do(req)
+		if err == nil || method != http.MethodGet || try == 2 || ctx.Err() != nil {
+			break
+		}
+		select {
+		case <-time.After(time.Duration(try+1) * 700 * time.Millisecond):
+		case <-ctx.Done():
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("连不上打飞机接口：%w", err)
 	}
@@ -182,8 +232,12 @@ func (c *Client) Stats(ctx context.Context) (map[string]any, error) {
 func (c *Client) Leaderboard(ctx context.Context, scope, mode string) (map[string]any, error) {
 	switch scope {
 	case "daily", "yesterday", "all-time":
+	case "event":
+		if mode != "en" && mode != "zh" {
+			return nil, errors.New("活动榜只有 en、zh 两个模式")
+		}
 	default:
-		return nil, fmt.Errorf("排行榜只有 daily、yesterday、all-time，没有 %q", scope)
+		return nil, fmt.Errorf("排行榜只有 daily、yesterday、all-time、event，没有 %q", scope)
 	}
 	if err := checkMode(mode); err != nil {
 		return nil, err
@@ -192,12 +246,60 @@ func (c *Client) Leaderboard(ctx context.Context, scope, mode string) (map[strin
 	return m, c.do(ctx, http.MethodGet, "/leaderboards/"+scope+"?inputMode="+url.QueryEscape(mode), nil, &m)
 }
 
+// Modes are the typing games hb plays: normal en, zh, ja and the hell modes.
+// (Roguelike expeditions are a different game; hb does not play them.)
+var Modes = []string{"en", "zh", "ja", "hell-en", "hell-zh"}
+
 func checkMode(mode string) error {
-	switch mode {
-	case "en", "zh", "ja":
-		return nil
+	for _, m := range Modes {
+		if m == mode {
+			return nil
+		}
 	}
-	return fmt.Errorf("模式只有 en、zh、ja，没有 %q", mode)
+	return fmt.Errorf("模式只有 %s，没有 %q", strings.Join(Modes, "、"), mode)
+}
+
+// IsHell says whether a mode is a hell mode (unlocked by play, limited per day).
+func IsHell(mode string) bool { return strings.HasPrefix(mode, "hell-") }
+
+// HellAttempts is one hell mode's unlock progress and today's attempts.
+type HellAttempts struct {
+	InputMode      string `json:"inputMode"`
+	NormalMode     string `json:"normalMode"`
+	Used           int    `json:"used"`
+	Remaining      int    `json:"remaining"` // -1: unlimited
+	Limit          int    `json:"limit"`     // -1: unlimited
+	BestKills      int    `json:"bestKills"`
+	CompletedWaves int    `json:"completedWaves"`
+	RequiredKills  int    `json:"requiredKills"`
+	RequiredWaves  int    `json:"requiredWaves"`
+	ResetAt        int64  `json:"resetAt"` // Unix ms
+	Unlocked       bool   `json:"unlocked"`
+	Unlimited      bool   `json:"unlimited"`
+}
+
+// Hell is GET /profile/hell-attempts.
+func (c *Client) Hell(ctx context.Context) (map[string]HellAttempts, error) {
+	var r struct {
+		Attempts map[string]HellAttempts `json:"attempts"`
+	}
+	return r.Attempts, c.do(ctx, http.MethodGet, "/profile/hell-attempts", nil, &r)
+}
+
+// Event is the active typing event, or nil.
+type Event struct {
+	ID       int    `json:"id"`
+	Title    string `json:"title"`
+	StartsAt int64  `json:"startsAt"`
+	EndsAt   int64  `json:"endsAt"`
+}
+
+// ActiveEvent is GET /events/active.
+func (c *Client) ActiveEvent(ctx context.Context) (*Event, error) {
+	var r struct {
+		Event *Event `json:"event"`
+	}
+	return r.Event, c.do(ctx, http.MethodGet, "/events/active", nil, &r)
 }
 
 // Run is a new run: what the live connection needs.

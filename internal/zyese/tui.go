@@ -387,7 +387,7 @@ func num(f float64) string {
 }
 
 func (m *Model) header() string {
-	modeName := map[string]string{"en": "英文", "zh": "中文", "ja": "日文"}[m.g.Mode]
+	modeName := map[string]string{"en": "英文", "zh": "中文", "ja": "日文", "hell-en": "地狱 · 英文", "hell-zh": "地狱 · 中文"}[m.g.Mode]
 	s := bold.Render("打飞机") + dim.Render(" · "+modeName)
 	if st := m.state; st != nil {
 		s += fmt.Sprintf("  分数 %s  波次 %s  连击 %s  击落 %s  命中 %s / 失误 %s  %ss",
@@ -599,6 +599,65 @@ func center(s string, w, h int) string {
 
 func clampInt(v, lo, hi int) int { return max(lo, min(v, hi)) }
 
+// resultLabels are the Result fields of openapi-v1.yaml, in Chinese, in order.
+var resultLabels = []struct{ key, label string }{
+	{"score", "分数"}, {"wave", "波次"}, {"kills", "击落"}, {"longestStreak", "最长连击"}, {"accuracy", "准确率"}, {"moderationStatus", "上榜状态"},
+}
+
+// moderationNames says what the leaderboard does with the run.
+var moderationNames = map[string]string{"visible": "正常上榜"} // the only value seen so far; others are shown as they come
+
+// finishNames are the ends of a run seen so far; others are shown as they come.
+var finishNames = map[string]string{"collision": "被敌机撞毁"}
+
+func finishReason(s string) string {
+	if n, ok := finishNames[s]; ok {
+		return n + "（" + s + "）"
+	}
+	return s
+}
+
+// resultLines writes the server's result: the known fields with Chinese
+// names, then any others as they come.
+func resultLines(r map[string]any) string {
+	var b strings.Builder
+	seen := map[string]bool{}
+	for _, f := range resultLabels {
+		v, ok := r[f.key]
+		if !ok || v == nil {
+			continue
+		}
+		seen[f.key] = true
+		val := fmt.Sprint(v)
+		switch x := v.(type) {
+		case float64:
+			val = num(x)
+			if f.key == "accuracy" {
+				val += "%"
+			}
+		case string:
+			if f.key == "moderationStatus" {
+				if n, ok := moderationNames[x]; ok {
+					val = n
+				}
+			}
+		}
+		fmt.Fprintf(&b, "  %s  %s\n", dim.Render(f.label), val)
+	}
+	var rest []string
+	for k := range r {
+		if !seen[k] {
+			rest = append(rest, k)
+		}
+	}
+	sort.Strings(rest)
+	for _, k := range rest {
+		v, _ := json.Marshal(r[k])
+		fmt.Fprintf(&b, "  %s  %s\n", dim.Render(k), string(v))
+	}
+	return b.String()
+}
+
 func (m *Model) overView() string {
 	var b strings.Builder
 	b.WriteString(m.header() + "\n\n")
@@ -632,21 +691,13 @@ func (m *Model) overView() string {
 		fmt.Fprintf(&b, "\n分数 %s  波次 %s  击落 %s  最长连击 %s  用时 %ss\n",
 			bold.Render(num(st.Score)), num(st.Wave), num(st.Kills), num(st.LongestStreak), num(math.Floor(st.Elapsed)))
 		if st.FinishReason != nil && *st.FinishReason != "" {
-			b.WriteString(dim.Render("结束原因："+*st.FinishReason) + "\n")
+			b.WriteString(dim.Render("结束原因："+finishReason(*st.FinishReason)) + "\n")
 		}
 	}
 	if m.result != nil {
 		if r, ok := m.result["result"].(map[string]any); ok {
 			b.WriteString("\n" + bold.Render("服务器结算") + "\n")
-			keys := make([]string, 0, len(r))
-			for k := range r {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, k := range keys {
-				v, _ := json.Marshal(r[k])
-				fmt.Fprintf(&b, "  %s  %s\n", dim.Render(k), string(v))
-			}
+			b.WriteString(resultLines(r))
 		}
 	} else {
 		b.WriteString(dim.Render("\n正在读服务器的结算…") + "\n")
